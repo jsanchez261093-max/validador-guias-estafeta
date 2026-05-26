@@ -194,6 +194,13 @@ async function saveRulesToSheet(estId, kind, rules) {
   var d = await jsonp(url);
   if (d.error) throw new Error(d.error);
 }
+async function fetchCatalogos(estId) {
+  var url = APPS_SCRIPT_URL + "?action=fetchCatalogos&estId=" + encodeURIComponent(estId);
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+  return d; // { nombres: [...], motivos: [...] }
+}
+
 async function fetchWsConfFromSheet(estId) {
   var url = APPS_SCRIPT_URL + "?action=fetchWsConf&estId=" + encodeURIComponent(estId);
   var d = await jsonp(url);
@@ -450,6 +457,8 @@ export default function App() {
   var dtSt   = useState(DEFAULT_DESTINO_RULES); var dtRules=dtSt[0],setDtRules=dtSt[1];
   var wcSt   = useState(DEFAULT_WS_CONFIG); var wsConf=wcSt[0],setWsConf=wcSt[1];
   var showCfgSt = useState(false); var showCfg=showCfgSt[0],setShowCfg=showCfgSt[1];
+  var catSt    = useState({nombres:[],motivos:[]}); var catalogos=catSt[0],setCatalogos=catSt[1];
+  var motManSt = useState(""); var motManual=motManSt[0],setMotManual=motManSt[1];
 
   useEffect(function() {
     // IDs guardados localmente
@@ -498,6 +507,11 @@ export default function App() {
           concentradoraAccounts: d.concentradoraAccounts || DEFAULT_WS_CONFIG.concentradoraAccounts
         });
       }
+    }).catch(function(){});
+
+    // Catálogos: nombres autorizadores y motivos históricos
+    fetchCatalogos(eid).then(function(d) {
+      if (d) setCatalogos({ nombres: d.nombres||[], motivos: d.motivos||[] });
     }).catch(function(){});
   }, []);
 
@@ -566,11 +580,12 @@ export default function App() {
   }
 
   async function authorize() {
-    if (!mForm.name||!mForm.reason||!modal) return;
+    var motivoFinal = mForm.reason === "Otros" ? motManual : mForm.reason;
+    if (!mForm.name || !motivoFinal || !modal) return;
     setLoading(true);
     var na = { guia:modal.guia, source:modal.source, original:modal.status, issues:modal.issues,
       tipoOrigen:modal.tipoOrigen, tipoDestino:modal.tipoDestino, criticidad:modal.criticidad,
-      name:mForm.name, reason:mForm.reason, fecha:new Date().toLocaleString("es-MX") };
+      name:mForm.name, reason:motivoFinal, fecha:new Date().toLocaleString("es-MX") };
     var newA = [na].concat(auths);
     setAuths(newA);
     // Guardar en Google Sheet
@@ -592,8 +607,10 @@ export default function App() {
       }
     }
     setResults(function(prev){return prev.map(function(r){return(r.guia===modal.guia&&r.source===modal.source)?Object.assign({},r,{status:"autorizada"}):r;});});
-    setModal(null); setMForm({name:"",reason:""}); setEstOpts({});
+    setModal(null); setMForm({name:"",reason:""}); setEstOpts({}); setMotManual("");
     setLoading(false);
+    // Recargar catálogos para que el nuevo motivo aparezca en futuros dropdowns
+    fetchCatalogos(estId).then(function(d){ if(d) setCatalogos({nombres:d.nombres||[],motivos:d.motivos||[]}); }).catch(function(){});
     notify("Guía "+modal.guia+" autorizada");
   }
 
@@ -1189,25 +1206,58 @@ export default function App() {
                 })}
               </div>
             )}
+            {/* ── Autorizado por: dropdown de nombres ── */}
             <div style={{ marginBottom:10 }}>
               <label style={{ fontSize:12,fontWeight:500,display:"block",marginBottom:3 }}>Autorizado por *</label>
-              <input value={mForm.name} placeholder="Nombre completo"
-                style={{ width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box" }}
-                onChange={function(e){ setMForm(function(f){ return Object.assign({},f,{name:e.target.value}); }); }} />
+              {catalogos.nombres.length > 0 ? (
+                <select value={mForm.name}
+                  style={{ width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box",background:"#fff",color:"#1e293b" }}
+                  onChange={function(e){ setMForm(function(f){ return Object.assign({},f,{name:e.target.value}); }); }}>
+                  <option value="">— Selecciona —</option>
+                  {catalogos.nombres.map(function(n,i){ return <option key={i} value={n}>{n}</option>; })}
+                </select>
+              ) : (
+                <input value={mForm.name} placeholder="Nombre completo"
+                  style={{ width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box" }}
+                  onChange={function(e){ setMForm(function(f){ return Object.assign({},f,{name:e.target.value}); }); }} />
+              )}
             </div>
+
+            {/* ── Motivo: dropdown histórico + opción manual ── */}
             <div style={{ marginBottom:16 }}>
               <label style={{ fontSize:12,fontWeight:500,display:"block",marginBottom:3 }}>Motivo *</label>
-              <textarea value={mForm.reason} rows={3} placeholder="Justificación…"
-                style={{ width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box",resize:"vertical" }}
-                onChange={function(e){ setMForm(function(f){ return Object.assign({},f,{reason:e.target.value}); }); }} />
+              {catalogos.motivos.length > 0 ? (
+                <div>
+                  <select value={mForm.reason}
+                    style={{ width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box",background:"#fff",color:"#1e293b",marginBottom:mForm.reason==="Otros"?8:0 }}
+                    onChange={function(e){ setMForm(function(f){ return Object.assign({},f,{reason:e.target.value}); }); setMotManual(""); }}>
+                    <option value="">— Selecciona un motivo —</option>
+                    {catalogos.motivos.map(function(m,i){ return <option key={i} value={m}>{m}</option>; })}
+                    <option value="Otros">✏ Otro motivo (escribir)</option>
+                  </select>
+                  {mForm.reason === "Otros" && (
+                    <textarea value={motManual} rows={3} placeholder="Escribe el motivo…"
+                      style={{ width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #3b82f6",fontSize:13,boxSizing:"border-box",resize:"vertical" }}
+                      onChange={function(e){ setMotManual(e.target.value); }}
+                      autoFocus />
+                  )}
+                </div>
+              ) : (
+                <textarea value={mForm.reason} rows={3} placeholder="Justificación…"
+                  style={{ width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #e2e8f0",fontSize:13,boxSizing:"border-box",resize:"vertical" }}
+                  onChange={function(e){ setMForm(function(f){ return Object.assign({},f,{reason:e.target.value}); }); }} />
+              )}
             </div>
+
             <div style={{ display:"flex",gap:8,justifyContent:"flex-end" }}>
               <button style={btnSec}
-                onClick={function(){ setModal(null); setMForm({name:"",reason:""}); setEstOpts({}); }}>
+                onClick={function(){ setModal(null); setMForm({name:"",reason:""}); setEstOpts({}); setMotManual(""); }}>
                 Cancelar
               </button>
-              <button onClick={authorize} disabled={loading||!mForm.name||!mForm.reason}
-                style={{ padding:"8px 16px",color:"white",border:"none",borderRadius:7,fontSize:13,cursor:"pointer",background:loading||!mForm.name||!mForm.reason?"#94a3b8":"#3b82f6" }}>
+              <button onClick={authorize}
+                disabled={loading || !mForm.name || (!mForm.reason) || (mForm.reason==="Otros" && !motManual)}
+                style={{ padding:"8px 16px",color:"white",border:"none",borderRadius:7,fontSize:13,cursor:"pointer",
+                  background:(loading||!mForm.name||!mForm.reason||(mForm.reason==="Otros"&&!motManual))?"#94a3b8":"#3b82f6" }}>
                 {loading ? "Guardando…" : "Confirmar"}
               </button>
             </div>
