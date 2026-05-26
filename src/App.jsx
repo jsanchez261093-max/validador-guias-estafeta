@@ -136,6 +136,18 @@ async function fetchGuias(histId, date, extraCols) {
   return d;
 }
 
+async function fetchGuiasRango(histId, fechaIni, fechaFin, extraCols) {
+  var url = APPS_SCRIPT_URL
+    + "?action=fetchGuiasRango"
+    + "&histId="    + encodeURIComponent(histId)
+    + "&fechaIni="  + encodeURIComponent(ymdToEst(fechaIni))
+    + "&fechaFin="  + encodeURIComponent(ymdToEst(fechaFin))
+    + (extraCols && extraCols.length ? "&extraCols=" + encodeURIComponent(extraCols.join("|")) : "");
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
 async function clearCache(fecha) {
   var ef  = ymdToEst(fecha);
   var url = APPS_SCRIPT_URL
@@ -436,7 +448,10 @@ var LS = {
 // ── App ────────────────────────────────────────────────────
 export default function App() {
   var tabSt  = useState("inicio"); var tab=tabSt[0],setTab=tabSt[1];
-  var dateSt = useState(new Date().toISOString().split("T")[0]); var date=dateSt[0],setDate=dateSt[1];
+  var dateSt    = useState(new Date().toISOString().split("T")[0]); var date=dateSt[0],setDate=dateSt[1];
+  var dateEndSt = useState(new Date().toISOString().split("T")[0]); var dateEnd=dateEndSt[0],setDateEnd=dateEndSt[1];
+  var modeSt    = useState("dia"); var queryMode=modeSt[0],setQueryMode=modeSt[1]; // dia | rango | mes | anio
+  var dashPeriodSt = useState("dia"); var dashPeriod=dashPeriodSt[0],setDashPeriod=dashPeriodSt[1]; // dia | semana | mes | anio
   var hIdSt  = useState(DEF_HIST_ID);  var histId=hIdSt[0],setHistId=hIdSt[1];
   var eIdSt  = useState(DEF_EST_ID);   var estId=eIdSt[0],setEstId=eIdSt[1];
   var resSt  = useState([]); var results=resSt[0],setResults=resSt[1];
@@ -521,19 +536,111 @@ export default function App() {
     setTimeout(function(){setNote(null);}, 4000);
   }
 
+  // ── Helpers de agrupación temporal para el Dashboard ──────
+  // Convierte "dd/mm/yyyy HH:MM" → clave según granularidad
+  function fechaToKey(str, granularity) {
+    if (!str) return null;
+    var m = str.trim().match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+    if (!m) return null;
+    var dd = m[1].padStart(2,"0"), mm = m[2].padStart(2,"0"), yyyy = m[3];
+    if (granularity === "dia")    return yyyy + "-" + mm + "-" + dd;
+    if (granularity === "mes")    return yyyy + "-" + mm;
+    if (granularity === "anio")   return yyyy;
+    if (granularity === "semana") {
+      // Número de semana ISO
+      var d = new Date(parseInt(yyyy), parseInt(mm)-1, parseInt(dd));
+      var dayOfWeek = d.getDay() || 7; // lunes=1
+      d.setDate(d.getDate() + 4 - dayOfWeek);
+      var yearStart = new Date(d.getFullYear(), 0, 1);
+      var week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+      return d.getFullYear() + "-S" + String(week).padStart(2,"0");
+    }
+    return yyyy + "-" + mm + "-" + dd;
+  }
+
+  // Etiqueta legible para el eje X según granularidad
+  function keyToLabel(key, granularity) {
+    if (!key) return key;
+    if (granularity === "dia") {
+      var p = key.split("-");
+      return p[2] + "/" + p[1];
+    }
+    if (granularity === "semana") return key.replace("-", " ");
+    if (granularity === "mes") {
+      var meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+      var pm = key.split("-");
+      return meses[parseInt(pm[1])-1] + " " + pm[0];
+    }
+    return key; // año: solo el número
+  }
+
+  // Agrupa resultados por granularidad para gráficas de tendencia
+  function groupByPeriod(rows, source, granularity) {
+    var map = {};
+    rows.filter(function(r){ return source === "todos" || r.source === source; })
+      .forEach(function(r) {
+        var k = fechaToKey(r.fecha, granularity);
+        if (!k) return;
+        if (!map[k]) map[k] = { total:0, validas:0, sospechosas:0, anomalias:0, autorizadas:0 };
+        map[k].total++;
+        if (r.status === "valida")      map[k].validas++;
+        if (r.status === "sospechosa")  map[k].sospechosas++;
+        if (r.status === "anomalia")    map[k].anomalias++;
+        if (r.status === "autorizada")  map[k].autorizadas++;
+      });
+    return Object.entries(map)
+      .sort(function(a,b){ return a[0].localeCompare(b[0]); })
+      .map(function(e){ return Object.assign({ key:e[0], label:keyToLabel(e[0],granularity) }, e[1]); });
+  }
+
+  // Genera rango de fechas ini/fin según el modo de consulta seleccionado
+  function getRangoFromMode() {
+    var today = new Date().toISOString().split("T")[0];
+    if (queryMode === "dia")   return { ini: date,    fin: date };
+    if (queryMode === "rango") return { ini: date,    fin: dateEnd };
+    if (queryMode === "mes") {
+      var ym = date.slice(0,7); // "yyyy-mm"
+      var firstDay = ym + "-01";
+      var tmp = new Date(date.slice(0,4), parseInt(date.slice(5,7)), 0); // último día del mes
+      var lastDay  = ym + "-" + String(tmp.getDate()).padStart(2,"0");
+      return { ini: firstDay, fin: lastDay > today ? today : lastDay };
+    }
+    if (queryMode === "anio") {
+      var yr = date.slice(0,4);
+      var lastDayAnio = yr + "-12-31";
+      return { ini: yr + "-01-01", fin: lastDayAnio > today ? today : lastDayAnio };
+    }
+    return { ini: date, fin: date };
+  }
+
+  // Genera array de fechas YYYY-MM-DD entre dos fechas
+  function getDatesInRange(from, to) {
+    var dates = [];
+    var cur = new Date(from + "T12:00:00");
+    var end = new Date(to   + "T12:00:00");
+    if (cur > end) { var tmp=cur; cur=end; end=tmp; } // orden ascendente
+    while (cur <= end) {
+      dates.push(cur.toISOString().split("T")[0]);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+  }
+
   async function runValidation() {
     if (!date) return;
     setLoading(true);
     try {
-      setLoadMsg("📡 Leyendo guías desde Google Sheets…");
-      // Extraer columnas de reglas activas para que el servidor solo lea las necesarias
+      var rango    = getRangoFromMode();
+      var rangoIni = rango.ini, rangoFin = rango.fin;
+      var dates    = getDatesInRange(rangoIni, rangoFin);
+      var esGrande = dates.length > 7; // más de 7 días → llamada única al rango
+
+      // Columnas de reglas activas
       var extraCols = [];
       orRules.concat(dtRules).forEach(function(r){ if(r.active && r.field) extraCols.push(r.field); });
-      extraCols = extraCols.filter(function(v,i,a){ return a.indexOf(v)===i; }); // unique
-      var sheetData = await fetchGuias(histId, date, extraCols);
-      var cd = sheetData.comando || [];
-      var wd = sheetData.webService || [];
+      extraCols = extraCols.filter(function(v,i,a){ return a.indexOf(v)===i; });
 
+      // Cargar estandarizado una sola vez
       setLoadMsg("📋 Cargando estandarizado…");
       var estData = await fetchEst(estId);
       var nO = new Set(estData.origenes.map(function(v){return String(v).toLowerCase();}));
@@ -545,6 +652,27 @@ export default function App() {
       LS.set("estDest",  JSON.stringify(Array.from(nD)));
       LS.set("estCont",  JSON.stringify(Array.from(nC)));
       LS.set("estUsers", JSON.stringify(Array.from(nU)));
+
+      var cd = [], wd = [];
+      if (esGrande) {
+        // Modo eficiente: una sola llamada para mes/año
+        setLoadMsg("📡 Leyendo rango completo (" + dates.length + " días) desde Sheets…");
+        var rangoData = await fetchGuiasRango(histId, rangoIni, rangoFin, extraCols);
+        cd = rangoData.comando    || [];
+        wd = rangoData.webService || [];
+      } else {
+        // Modo paralelo: una llamada por día (hasta 7 días)
+        setLoadMsg("📡 Leyendo " + dates.length + " día(s) desde Google Sheets…");
+        var dayResults = await Promise.all(dates.map(function(d) {
+          return fetchGuias(histId, d, extraCols).catch(function(e) {
+            return { comando: [], webService: [], error: e.message };
+          });
+        }));
+        dayResults.forEach(function(dr) {
+          cd = cd.concat(dr.comando    || []);
+          wd = wd.concat(dr.webService || []);
+        });
+      }
 
       setLoadMsg("⚙️ Validando " + (cd.length + wd.length) + " guías…");
       var cGuias   = cd.map(function(r){return gv(r,"No. de guía");});
@@ -559,8 +687,24 @@ export default function App() {
       });
       setResults(all);
 
+      // Ajustar dashPeriod automáticamente según lo consultado
+      if (queryMode === "anio")        setDashPeriod("mes");
+      else if (queryMode === "mes")    setDashPeriod("semana");
+      else if (dates.length > 1)       setDashPeriod("dia");
+      else                             setDashPeriod("dia");
+
+      var modeLabels = { dia:"Día", rango:"Rango", mes:"Mes", anio:"Año" };
+      var periodoLabel = queryMode === "dia"
+        ? fmtDate(rangoIni)
+        : queryMode === "mes"
+          ? new Date(rangoIni + "T12:00:00").toLocaleDateString("es-MX",{month:"long",year:"numeric"})
+          : queryMode === "anio"
+            ? rangoIni.slice(0,4)
+            : fmtDate(rangoIni) + " – " + fmtDate(rangoFin);
+
       var b = {
-        id:Date.now(), fecha:new Date().toLocaleString("es-MX"), periodo:fmtDate(date),
+        id:Date.now(), fecha:new Date().toLocaleString("es-MX"), periodo:periodoLabel,
+        modo: modeLabels[queryMode] || queryMode,
         total:all.length, discarded:disc,
         validas:all.filter(function(r){return r.status==="valida";}).length,
         sospechosas:all.filter(function(r){return r.status==="sospechosa";}).length,
@@ -571,7 +715,7 @@ export default function App() {
       setHist(nh);
       LS.set("hist", JSON.stringify(nh));
       setTab("dashboard");
-      notify(all.length+" guías · Cmd:"+cd.length+" WS:"+wsRes.length+(disc>0?" · "+disc+" descartadas":""));
+      notify(all.length+" guías · " + dates.length + " día(s) · Cmd:"+cd.length+" WS:"+wsRes.length+(disc>0?" · "+disc+" desc.":""));
     } catch(e) {
       notify("Error: "+(e.message||"Verifica la conexión con Apps Script"), false);
       console.error(e);
@@ -684,6 +828,9 @@ export default function App() {
   var cmdTipo=Object.entries(cmdTipoMap).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{tipo:e[0],n:e[1]};});
   var wsTipoMap={};results.filter(function(r){return r.source==="Web Service"&&r.tipoOrigen&&r.tipoOrigen!=="—";}).forEach(function(r){wsTipoMap[r.tipoOrigen]=(wsTipoMap[r.tipoOrigen]||0)+1;});
   var wsTipo=Object.entries(wsTipoMap).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{tipo:e[0],n:e[1]};});
+  // Datos de tendencia según granularidad seleccionada en el Dashboard
+  var trendCmd = groupByPeriod(results, "Comando",     dashPeriod);
+  var trendWS  = groupByPeriod(results, "Web Service", dashPeriod);
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -737,17 +884,90 @@ export default function App() {
               <div style={{ fontSize:42, marginBottom:8 }}>📊</div>
               <h2 style={{ fontSize:18, fontWeight:500, marginBottom:4 }}>Validación de Guías</h2>
               <div style={{ fontSize:13, color:"#64748b" }}>
-                Selecciona la fecha para cargar y validar guías desde Google Sheets
+                Selecciona un rango de fechas para cargar y validar guías desde Google Sheets
               </div>
             </div>
             <div style={{ marginBottom:20 }}>
-              <label style={{ display:"block", fontSize:12, fontWeight:600, marginBottom:6 }}>Fecha de validación</label>
-              <input type="date" value={date}
-                max={new Date().toISOString().split("T")[0]}
-                onChange={function(e){setDate(e.target.value);}}
-                style={{ width:"100%", padding:"12px 14px", borderRadius:10,
-                  border:"1px solid #e2e8f0", fontSize:16, boxSizing:"border-box",
-                  background:"#ffffff", color:"#1e293b" }} />
+              <label style={{ display:"block", fontSize:12, fontWeight:600, marginBottom:6 }}>Período de consulta</label>
+              {/* Selector de modo */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6, marginBottom:12 }}>
+                {[["dia","📅 Día"],["rango","📆 Rango"],["mes","🗓 Mes"],["anio","📊 Año"]].map(function(m){
+                  return (
+                    <button key={m[0]} onClick={function(){ setQueryMode(m[0]); }}
+                      style={{ padding:"8px 4px", borderRadius:8, border:"1px solid",
+                        borderColor: queryMode===m[0] ? "#3b82f6" : "#e2e8f0",
+                        background:  queryMode===m[0] ? "#eff6ff" : "#ffffff",
+                        color:       queryMode===m[0] ? "#1d4ed8" : "#64748b",
+                        fontSize:12, fontWeight: queryMode===m[0] ? 600 : 400,
+                        cursor:"pointer" }}>
+                      {m[1]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Controles según modo */}
+              {(queryMode === "dia") && (
+                <input type="date" value={date}
+                  max={new Date().toISOString().split("T")[0]}
+                  onChange={function(e){ setDate(e.target.value); setDateEnd(e.target.value); }}
+                  style={{ width:"100%", padding:"10px 12px", borderRadius:10,
+                    border:"1px solid #e2e8f0", fontSize:14, boxSizing:"border-box",
+                    background:"#ffffff", color:"#1e293b" }} />
+              )}
+              {(queryMode === "rango") && (
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>Desde</div>
+                    <input type="date" value={date}
+                      max={new Date().toISOString().split("T")[0]}
+                      onChange={function(e){ setDate(e.target.value); if(dateEnd<e.target.value) setDateEnd(e.target.value); }}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:10,
+                        border:"1px solid #e2e8f0", fontSize:14, boxSizing:"border-box",
+                        background:"#ffffff", color:"#1e293b" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>Hasta</div>
+                    <input type="date" value={dateEnd}
+                      min={date} max={new Date().toISOString().split("T")[0]}
+                      onChange={function(e){ setDateEnd(e.target.value); }}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:10,
+                        border:"1px solid #e2e8f0", fontSize:14, boxSizing:"border-box",
+                        background:"#ffffff", color:"#1e293b" }} />
+                  </div>
+                </div>
+              )}
+              {(queryMode === "mes") && (
+                <input type="month" value={date.slice(0,7)}
+                  max={new Date().toISOString().slice(0,7)}
+                  onChange={function(e){ var v=e.target.value+"-01"; setDate(v); setDateEnd(v); }}
+                  style={{ width:"100%", padding:"10px 12px", borderRadius:10,
+                    border:"1px solid #e2e8f0", fontSize:14, boxSizing:"border-box",
+                    background:"#ffffff", color:"#1e293b" }} />
+              )}
+              {(queryMode === "anio") && (
+                <select value={date.slice(0,4)}
+                  onChange={function(e){ var v=e.target.value+"-01-01"; setDate(v); setDateEnd(v); }}
+                  style={{ width:"100%", padding:"10px 12px", borderRadius:10,
+                    border:"1px solid #e2e8f0", fontSize:14, boxSizing:"border-box",
+                    background:"#ffffff", color:"#1e293b" }}>
+                  {Array.from({length:5},function(_,i){ var y=new Date().getFullYear()-i; return (
+                    <option key={y} value={y}>{y}</option>
+                  );})}
+                </select>
+              )}
+
+              {/* Resumen del período */}
+              {date && (function(){
+                var r = getRangoFromMode();
+                var dias = getDatesInRange(r.ini, r.fin).length;
+                if (dias > 1) return (
+                  <div style={{ fontSize:11, color:"#3b82f6", marginTop:6, textAlign:"center" }}>
+                    {dias} días · {fmtDate(r.ini)} → {fmtDate(r.fin)}
+                  </div>
+                );
+                return null;
+              })()}
             </div>
             <div style={{ padding:14, background:"#ffffff", borderRadius:10,
               border:"1px solid #e2e8f0", marginBottom:20 }}>
@@ -767,25 +987,33 @@ export default function App() {
                 fontSize:15, fontWeight:500,
                 background:loading||!date?"#94a3b8":"#3b82f6",
                 cursor:loading||!date?"not-allowed":"pointer" }}>
-              {loading
-                ? "⏳ " + (loadMsg || "Cargando…")
-                : "▶ Validar guías del " + (date ? fmtDate(date) : "—")}
+              {loading ? "⏳ " + (loadMsg || "Cargando…") : (function(){
+                if (!date) return "▶ Selecciona un período";
+                var r = getRangoFromMode();
+                var dias = getDatesInRange(r.ini, r.fin).length;
+                if (queryMode === "dia")  return "▶ Validar guías del " + fmtDate(r.ini);
+                if (queryMode === "mes")  return "▶ Validar mes de " + new Date(r.ini+"T12:00:00").toLocaleDateString("es-MX",{month:"long",year:"numeric"});
+                if (queryMode === "anio") return "▶ Validar año " + r.ini.slice(0,4) + " (" + dias + " días)";
+                return "▶ Validar " + dias + " días (" + fmtDate(r.ini) + " – " + fmtDate(r.fin) + ")";
+              })()}
             </button>
             {/* Botón limpiar caché */}
             <div style={{ marginTop:12 }}>
               <button onClick={async function(){
-                if (!date) { notify("Selecciona una fecha primero", false); return; }
-                setLoading(true); setLoadMsg("🗑 Limpiando caché…");
+                if (!date) { notify("Selecciona un período primero", false); return; }
+                var r = getRangoFromMode();
+                var dates = getDatesInRange(r.ini, r.fin);
+                setLoading(true); setLoadMsg("🗑 Limpiando caché de " + dates.length + " día(s)…");
                 try {
-                  await clearCache(date);
-                  notify("Caché limpiado para " + fmtDate(date) + " · La próxima validación leerá datos frescos");
+                  await Promise.all(dates.map(function(d){ return clearCache(d).catch(function(){}); }));
+                  notify("Caché limpiado para " + dates.length + " día(s) · La próxima validación leerá datos frescos");
                 } catch(e) { notify("Error al limpiar caché: "+e.message, false); }
                 setLoadMsg(""); setLoading(false);
               }} disabled={loading||!date}
                 style={{ width:"100%", padding:"10px", border:"1px solid #f59e0b", borderRadius:10,
                   fontSize:13, cursor:loading||!date?"not-allowed":"pointer",
                   background:loading||!date?"#f8fafc":"#fffbeb", color:"#92400e" }}>
-                🗑 Limpiar caché de {date ? fmtDate(date) : "la fecha seleccionada"}
+                🗑 Limpiar caché del período seleccionado
               </button>
               <div style={{ fontSize:10, color:"#94a3b8", textAlign:"center", marginTop:4 }}>
                 Úsalo si corregiste datos en el Sheet y quieres revalidar
@@ -827,13 +1055,19 @@ export default function App() {
         )}
         {tab==="dashboard" && results.length>0 && (
           <div>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+            {/* ── Encabezado ── */}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
               <div>
                 <h2 style={{ fontSize:16, fontWeight:500, marginBottom:2 }}>Dashboard</h2>
-                <div style={{ fontSize:11, color:"#64748b" }}>{hist[0]&&hist[0].periodo}</div>
+                <div style={{ fontSize:11, color:"#64748b" }}>
+                  {hist[0]&&hist[0].periodo}
+                  {hist[0]&&hist[0].modo&&<span style={{ marginLeft:6, padding:"1px 6px", background:"#eff6ff", color:"#3b82f6", borderRadius:4, fontSize:10 }}>{hist[0].modo}</span>}
+                </div>
               </div>
               <button onClick={function(){expCsv(results,"validacion_completa.csv");}} style={btnSec}>↓ Exportar completo</button>
             </div>
+
+            {/* ── KPIs ── */}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, marginBottom:14 }}>
               {[{l:"Total",v:stT,c:"#334155",bg:"#f8fafc"},{l:"Válidas",v:stV,c:"#15803d",bg:"#f0fdf4"},{l:"Sospechosas",v:stS,c:"#b45309",bg:"#fffbeb"},{l:"Anomalías",v:stA,c:"#b91c1c",bg:"#fef2f2"},{l:"Autorizadas",v:stAu,c:"#5b21b6",bg:"#f5f3ff"}].map(function(card,i){
                 return (
@@ -845,6 +1079,8 @@ export default function App() {
                 );
               })}
             </div>
+
+            {/* ── Gráficas de resumen ── */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:14 }}>
               <div style={{ background:"#ffffff",borderRadius:11,padding:14,border:"1px solid #e2e8f0" }}>
                 <div style={{ fontWeight:500,fontSize:12,marginBottom:8 }}>Estatus</div>
@@ -860,28 +1096,83 @@ export default function App() {
                 <ResponsiveContainer width="100%" height={155}><BarChart data={toCounts} layout="vertical"><XAxis type="number" tick={{fontSize:9}}/><YAxis type="category" dataKey="n" tick={{fontSize:9}} width={110}/><Tooltip/><Bar dataKey="v" fill="#3b82f6" radius={[0,3,3,0]}/></BarChart></ResponsiveContainer>
               </div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
-              <div style={{ background:"#ffffff",borderRadius:11,padding:14,border:"1px solid #e2e8f0" }}>
-                <div style={{ fontWeight:500,fontSize:12,marginBottom:2 }}>Guías generadas por día (Comando)</div>
-                <div style={{ fontSize:10,color:"#64748b",marginBottom:8 }}>Apilado por estatus</div>
-                {cmdDaily.length===0
-                  ? <div style={{ textAlign:"center",padding:24,fontSize:11,color:"#64748b" }}>Sin datos de fecha</div>
-                  : <ResponsiveContainer width="100%" height={170}><BarChart data={cmdDaily}><XAxis dataKey="fecha" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}} allowDecimals={false}/><Tooltip/><Bar dataKey="validas" name="Válidas" fill="#22c55e" stackId="s"/><Bar dataKey="sospechosas" name="Sospechosas" fill="#f59e0b" stackId="s"/><Bar dataKey="anomalias" name="Anomalías" fill="#ef4444" stackId="s" radius={[3,3,0,0]}/></BarChart></ResponsiveContainer>}
-                <div style={{ display:"flex",gap:10,justifyContent:"center",marginTop:4 }}>
-                  {[["#22c55e","Válidas"],["#f59e0b","Sospechosas"],["#ef4444","Anomalías"]].map(function(x){return <div key={x[1]} style={{ display:"flex",gap:4,alignItems:"center",fontSize:9 }}><div style={{ width:8,height:8,borderRadius:2,background:x[0] }}/>{x[1]}</div>;})}
+
+            {/* ── Toggle de granularidad temporal ── */}
+            <div style={{ background:"#ffffff",borderRadius:11,padding:14,border:"1px solid #e2e8f0",marginBottom:14 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                <div>
+                  <div style={{ fontWeight:500,fontSize:12 }}>Tendencia temporal</div>
+                  <div style={{ fontSize:10,color:"#64748b" }}>Guías por período · apilado por estatus</div>
+                </div>
+                {/* Selector de granularidad */}
+                <div style={{ display:"flex", gap:4 }}>
+                  {[["dia","Día"],["semana","Semana"],["mes","Mes"],["anio","Año"]].map(function(g){
+                    var available = (function(){
+                      var days = getDatesInRange(
+                        (hist[0]&&hist[0].periodo ? (function(){ var r=getRangoFromMode(); return r.ini; })() : date),
+                        (hist[0]&&hist[0].periodo ? (function(){ var r=getRangoFromMode(); return r.fin; })() : date)
+                      ).length;
+                      if (g[0]==="dia")    return true;
+                      if (g[0]==="semana") return days >= 7;
+                      if (g[0]==="mes")    return days >= 28;
+                      if (g[0]==="anio")   return days >= 90;
+                      return true;
+                    })();
+                    return (
+                      <button key={g[0]} onClick={function(){ if(available) setDashPeriod(g[0]); }}
+                        disabled={!available}
+                        style={{ padding:"5px 10px", borderRadius:6, border:"1px solid",
+                          borderColor: dashPeriod===g[0] ? "#3b82f6" : "#e2e8f0",
+                          background:  dashPeriod===g[0] ? "#eff6ff" : available ? "#ffffff" : "#f8fafc",
+                          color:       dashPeriod===g[0] ? "#1d4ed8" : available ? "#64748b" : "#cbd5e1",
+                          fontSize:11, cursor: available ? "pointer" : "default" }}>
+                        {g[1]}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              <div style={{ background:"#ffffff",borderRadius:11,padding:14,border:"1px solid #e2e8f0" }}>
-                <div style={{ fontWeight:500,fontSize:12,marginBottom:2 }}>Guías recolectadas por día (WS)</div>
-                <div style={{ fontSize:10,color:"#64748b",marginBottom:8 }}>Apilado por estatus</div>
-                {wsDaily.length===0
-                  ? <div style={{ textAlign:"center",padding:24,fontSize:11,color:"#64748b" }}>Sin datos de fecha</div>
-                  : <ResponsiveContainer width="100%" height={170}><BarChart data={wsDaily}><XAxis dataKey="fecha" tick={{fontSize:9}}/><YAxis tick={{fontSize:9}} allowDecimals={false}/><Tooltip/><Bar dataKey="validas" name="Válidas" fill="#22c55e" stackId="s"/><Bar dataKey="sospechosas" name="Sospechosas" fill="#f59e0b" stackId="s"/><Bar dataKey="anomalias" name="Anomalías" fill="#ef4444" stackId="s" radius={[3,3,0,0]}/></BarChart></ResponsiveContainer>}
-                <div style={{ display:"flex",gap:10,justifyContent:"center",marginTop:4 }}>
-                  {[["#22c55e","Válidas"],["#f59e0b","Sospechosas"],["#ef4444","Anomalías"]].map(function(x){return <div key={x[1]} style={{ display:"flex",gap:4,alignItems:"center",fontSize:9 }}><div style={{ width:8,height:8,borderRadius:2,background:x[0] }}/>{x[1]}</div>;})}
+              {/* Gráficas de tendencia Cmd + WS */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:500, marginBottom:6, color:"#475569" }}>Comando</div>
+                  {trendCmd.length===0
+                    ? <div style={{ textAlign:"center",padding:24,fontSize:11,color:"#64748b" }}>Sin datos</div>
+                    : <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={trendCmd}>
+                          <XAxis dataKey="label" tick={{fontSize:9}} interval={trendCmd.length>20?Math.floor(trendCmd.length/10):0}/>
+                          <YAxis tick={{fontSize:9}} allowDecimals={false}/>
+                          <Tooltip formatter={function(v,n){return [v,n];}} labelFormatter={function(l){return "Período: "+l;}}/>
+                          <Bar dataKey="validas"      name="Válidas"      fill="#22c55e" stackId="s"/>
+                          <Bar dataKey="sospechosas"  name="Sospechosas"  fill="#f59e0b" stackId="s"/>
+                          <Bar dataKey="anomalias"    name="Anomalías"    fill="#ef4444" stackId="s" radius={[3,3,0,0]}/>
+                        </BarChart>
+                      </ResponsiveContainer>}
                 </div>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:500, marginBottom:6, color:"#475569" }}>Web Service</div>
+                  {trendWS.length===0
+                    ? <div style={{ textAlign:"center",padding:24,fontSize:11,color:"#64748b" }}>Sin datos</div>
+                    : <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={trendWS}>
+                          <XAxis dataKey="label" tick={{fontSize:9}} interval={trendWS.length>20?Math.floor(trendWS.length/10):0}/>
+                          <YAxis tick={{fontSize:9}} allowDecimals={false}/>
+                          <Tooltip formatter={function(v,n){return [v,n];}} labelFormatter={function(l){return "Período: "+l;}}/>
+                          <Bar dataKey="validas"      name="Válidas"      fill="#22c55e" stackId="s"/>
+                          <Bar dataKey="sospechosas"  name="Sospechosas"  fill="#f59e0b" stackId="s"/>
+                          <Bar dataKey="anomalias"    name="Anomalías"    fill="#ef4444" stackId="s" radius={[3,3,0,0]}/>
+                        </BarChart>
+                      </ResponsiveContainer>}
+                </div>
+              </div>
+              <div style={{ display:"flex",gap:10,justifyContent:"center",marginTop:6 }}>
+                {[["#22c55e","Válidas"],["#f59e0b","Sospechosas"],["#ef4444","Anomalías"]].map(function(x){
+                  return <div key={x[1]} style={{ display:"flex",gap:4,alignItems:"center",fontSize:9 }}><div style={{ width:8,height:8,borderRadius:2,background:x[0] }}/>{x[1]}</div>;
+                })}
               </div>
             </div>
+
+            {/* ── Tipos de guía ── */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
               <div style={{ background:"#ffffff",borderRadius:11,padding:14,border:"1px solid #e2e8f0" }}>
                 <div style={{ fontWeight:500,fontSize:12,marginBottom:2 }}>Tipo de guía (Comando)</div>
@@ -896,6 +1187,7 @@ export default function App() {
                   :<ResponsiveContainer width="100%" height={Math.max(wsTipo.length*30+20,140)}><BarChart data={wsTipo} layout="vertical"><XAxis type="number" tick={{fontSize:9}} allowDecimals={false}/><YAxis type="category" dataKey="tipo" tick={{fontSize:9}} width={145}/><Tooltip/><Bar dataKey="n" name="Guías" fill="#0891b2" radius={[0,4,4,0]}/></BarChart></ResponsiveContainer>}
               </div>
             </div>
+
             {critCards.length>0&&<div style={{ display:"flex",gap:10,marginBottom:14,flexWrap:"wrap" }}>{critCards.map(function(x){return <div key={x.l} style={{ background:CBG[x.l],borderRadius:9,padding:"10px 16px",border:"1px solid "+(CC[x.l]||"#334155")+"30" }}><div style={{ fontSize:20,fontWeight:600,color:CC[x.l]||"#334155" }}>{x.n}</div><div style={{ fontSize:11,color:CC[x.l]||"#334155",opacity:0.8 }}>Criticidad {x.l}</div></div>;})} </div>}
             {(stS+stA)>0&&(
               <div style={{ padding:12,background:"#fef2f2",borderRadius:10,border:"1px solid #fecaca",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap" }}>
