@@ -164,6 +164,51 @@ async function appendToEst(estId, sheetName, value) {
   if (d.error) throw new Error(d.error);
 }
 
+// ── Nuevas funciones API para Sheets ──────────────────────
+async function fetchAuths(estId) {
+  var url = APPS_SCRIPT_URL + "?action=fetchAuths&estId=" + encodeURIComponent(estId);
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+  return d.auths || [];
+}
+async function appendAuth(estId, auth) {
+  var url = APPS_SCRIPT_URL
+    + "?action=appendAuth"
+    + "&estId=" + encodeURIComponent(estId)
+    + "&auth="  + encodeURIComponent(JSON.stringify(auth));
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+}
+async function fetchRulesFromSheet(estId) {
+  var url = APPS_SCRIPT_URL + "?action=fetchRules&estId=" + encodeURIComponent(estId);
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+async function saveRulesToSheet(estId, kind, rules) {
+  var url = APPS_SCRIPT_URL
+    + "?action=saveRules"
+    + "&estId=" + encodeURIComponent(estId)
+    + "&kind="  + encodeURIComponent(kind)
+    + "&rules=" + encodeURIComponent(JSON.stringify(rules));
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+}
+async function fetchWsConfFromSheet(estId) {
+  var url = APPS_SCRIPT_URL + "?action=fetchWsConf&estId=" + encodeURIComponent(estId);
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+async function saveWsConfToSheet(estId, conf) {
+  var url = APPS_SCRIPT_URL
+    + "?action=saveWsConf"
+    + "&estId=" + encodeURIComponent(estId)
+    + "&conf="  + encodeURIComponent(JSON.stringify(conf));
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+}
+
 // ── Rule engine ────────────────────────────────────────────
 function evalRule(rule, row) {
   var fv = gv(row, rule.field), fvU = fv.toUpperCase(), rv = (rule.val || "").toUpperCase();
@@ -407,21 +452,53 @@ export default function App() {
   var showCfgSt = useState(false); var showCfg=showCfgSt[0],setShowCfg=showCfgSt[1];
 
   useEffect(function() {
-    function load(k, fn) {
+    // IDs guardados localmente
+    function loadLS(k, fn) {
       var r = LS.get(k);
       if (r && r.value) { try { fn(JSON.parse(r.value)); } catch(e) {} }
     }
-    load("auths",        function(v){setAuths(v);});
-    load("hist",         function(v){setHist(v);});
-    load("estOrig",      function(v){setEstOrig(new Set(v));});
-    load("estDest",      function(v){setEstDest(new Set(v));});
-    load("estCont",      function(v){setEstCont(new Set(v));});
-    load("estUsers",     function(v){setEstUsers(new Set(v));});
-    load("origenRules",  function(v){setOrRules(v);});
-    load("destinoRules", function(v){setDtRules(v);});
-    load("wsConf",       function(v){setWsConf(v);});
-    load("histId",       function(v){setHistId(v);});
-    load("estId",        function(v){setEstId(v);});
+    loadLS("hist",   function(v){setHist(v);});
+    loadLS("histId", function(v){setHistId(v);});
+    loadLS("estId",  function(v){setEstId(v);});
+
+    // Cargar desde Google Sheets al iniciar
+    var eid = (function(){ var r=LS.get("estId"); return r&&r.value?JSON.parse(r.value):DEF_EST_ID; })();
+
+    // Autorizaciones desde Sheet
+    fetchAuths(eid).then(function(rows) {
+      // Convertir filas del sheet al formato interno
+      var parsed = rows.map(function(r) {
+        return {
+          guia:       r["Guía"]||r["guia"]||"",
+          source:     r["Fuente"]||r["source"]||"",
+          original:   r["Original"]||r["original"]||"",
+          criticidad: r["Criticidad"]||r["criticidad"]||"",
+          issues:     (r["Problemas"]||r["issues"]||"").split(";").map(function(s){return s.trim();}).filter(Boolean),
+          name:       r["Autorizado por"]||r["name"]||"",
+          reason:     r["Motivo"]||r["reason"]||"",
+          fecha:      r["Fecha"]||r["fecha"]||""
+        };
+      });
+      setAuths(parsed);
+    }).catch(function(){});
+
+    // Reglas desde Sheet
+    fetchRulesFromSheet(eid).then(function(d) {
+      if (d.origenRules  && d.origenRules.length  > 0) setOrRules(d.origenRules);
+      if (d.destinoRules && d.destinoRules.length > 0) setDtRules(d.destinoRules);
+    }).catch(function(){});
+
+    // Patrones WS desde Sheet
+    fetchWsConfFromSheet(eid).then(function(d) {
+      if (d && (d.trKeywords||d.camKeywords||d.ecPrefixes||d.concentradoraAccounts)) {
+        setWsConf({
+          trKeywords:            d.trKeywords            || DEFAULT_WS_CONFIG.trKeywords,
+          camKeywords:           d.camKeywords           || DEFAULT_WS_CONFIG.camKeywords,
+          ecPrefixes:            d.ecPrefixes            || DEFAULT_WS_CONFIG.ecPrefixes,
+          concentradoraAccounts: d.concentradoraAccounts || DEFAULT_WS_CONFIG.concentradoraAccounts
+        });
+      }
+    }).catch(function(){});
   }, []);
 
   function notify(msg, ok) {
@@ -496,7 +573,8 @@ export default function App() {
       name:mForm.name, reason:mForm.reason, fecha:new Date().toLocaleString("es-MX") };
     var newA = [na].concat(auths);
     setAuths(newA);
-    LS.set("auths", JSON.stringify(newA));
+    // Guardar en Google Sheet
+    try { await appendAuth(estId, na); } catch(e) { notify("Advertencia: no se pudo guardar en Sheet: "+e.message, false); }
 
     var pends = modal.pendienteEst || [];
     for (var i=0; i<pends.length; i++) {
@@ -533,9 +611,24 @@ export default function App() {
     setLoading(false);
   }
 
-  async function saveOrRules(r)  { setOrRules(r);  LS.set("origenRules",  JSON.stringify(r)); notify("Reglas Tipo Origen guardadas"); }
-  async function saveDtRules(r)  { setDtRules(r);  LS.set("destinoRules", JSON.stringify(r)); notify("Reglas Tipo Destino guardadas"); }
-  async function saveWsConf(c)   { setWsConf(c);   LS.set("wsConf",       JSON.stringify(c)); notify("Patrones WS guardados"); }
+  async function saveOrRules(r) {
+    setOrRules(r);
+    LS.set("origenRules", JSON.stringify(r));
+    try { await saveRulesToSheet(estId, "origen", r); notify("Reglas Tipo Origen guardadas"); }
+    catch(e) { notify("Reglas guardadas localmente (error en Sheet: "+e.message+")", false); }
+  }
+  async function saveDtRules(r) {
+    setDtRules(r);
+    LS.set("destinoRules", JSON.stringify(r));
+    try { await saveRulesToSheet(estId, "destino", r); notify("Reglas Tipo Destino guardadas"); }
+    catch(e) { notify("Reglas guardadas localmente (error en Sheet: "+e.message+")", false); }
+  }
+  async function saveWsConf(c) {
+    setWsConf(c);
+    LS.set("wsConf", JSON.stringify(c));
+    try { await saveWsConfToSheet(estId, c); notify("Patrones WS guardados"); }
+    catch(e) { notify("Patrones guardados localmente (error en Sheet: "+e.message+")", false); }
+  }
 
   function expCsv(rows, name) {
     var csv = Papa.unparse(rows.map(function(r){
