@@ -124,14 +124,24 @@ function jsonp(url) {
 }
 
 // ── Apps Script API calls ──────────────────────────────────
-async function fetchGuias(histId, date) {
+async function fetchGuias(histId, date, extraCols) {
   var ef  = ymdToEst(date);
   var url = APPS_SCRIPT_URL
     + "?action=fetchGuias"
     + "&histId=" + encodeURIComponent(histId)
-    + "&fecha="  + encodeURIComponent(ef);
+    + "&fecha="  + encodeURIComponent(ef)
+    + (extraCols && extraCols.length ? "&extraCols=" + encodeURIComponent(extraCols.join("|")) : "");
   var d = await jsonp(url);
   if (d.error) throw new Error(d.error);
+  return d;
+}
+
+async function clearCache(fecha) {
+  var ef  = ymdToEst(fecha);
+  var url = APPS_SCRIPT_URL
+    + "?action=clearCache"
+    + "&fecha=" + encodeURIComponent(ef);
+  var d = await jsonp(url);
   return d;
 }
 
@@ -425,7 +435,11 @@ export default function App() {
     setLoading(true);
     try {
       setLoadMsg("📡 Leyendo guías desde Google Sheets…");
-      var sheetData = await fetchGuias(histId, date);
+      // Extraer columnas de reglas activas para que el servidor solo lea las necesarias
+      var extraCols = [];
+      orRules.concat(dtRules).forEach(function(r){ if(r.active && r.field) extraCols.push(r.field); });
+      extraCols = extraCols.filter(function(v,i,a){ return a.indexOf(v)===i; }); // unique
+      var sheetData = await fetchGuias(histId, date, extraCols);
       var cd = sheetData.comando || [];
       var wd = sheetData.webService || [];
 
@@ -647,7 +661,28 @@ export default function App() {
                 ? "⏳ " + (loadMsg || "Cargando…")
                 : "▶ Validar guías del " + (date ? fmtDate(date) : "—")}
             </button>
-            <div style={{ marginTop:20 }}>
+            {/* Botón limpiar caché */}
+            <div style={{ marginTop:12 }}>
+              <button onClick={async function(){
+                if (!date) { notify("Selecciona una fecha primero", false); return; }
+                setLoading(true); setLoadMsg("🗑 Limpiando caché…");
+                try {
+                  await clearCache(date);
+                  notify("Caché limpiado para " + fmtDate(date) + " · La próxima validación leerá datos frescos");
+                } catch(e) { notify("Error al limpiar caché: "+e.message, false); }
+                setLoadMsg(""); setLoading(false);
+              }} disabled={loading||!date}
+                style={{ width:"100%", padding:"10px", border:"1px solid #f59e0b", borderRadius:10,
+                  fontSize:13, cursor:loading||!date?"not-allowed":"pointer",
+                  background:loading||!date?"#f8fafc":"#fffbeb", color:"#92400e" }}>
+                🗑 Limpiar caché de {date ? fmtDate(date) : "la fecha seleccionada"}
+              </button>
+              <div style={{ fontSize:10, color:"#94a3b8", textAlign:"center", marginTop:4 }}>
+                Úsalo si corregiste datos en el Sheet y quieres revalidar
+              </div>
+            </div>
+
+            <div style={{ marginTop:10 }}>
               <button onClick={function(){setShowCfg(!showCfg);}} style={Object.assign({},btnSec,{fontSize:11,width:"100%"})}>
                 {showCfg?"▲ Ocultar":"▼ Configurar"} IDs de Google Sheets
               </button>
