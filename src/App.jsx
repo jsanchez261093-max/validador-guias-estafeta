@@ -545,6 +545,75 @@ function Empty(props) {
           boxShadow:"0 2px 10px rgba(59,130,246,0.35)"
         }}>{props.cta}</button>
       )}
+            {mmod && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,backdropFilter:"blur(6px)" }}>
+          <div style={{ background:T.bgSurface,borderRadius:T.r12,padding:24,maxWidth:400,width:"100%",border:"1px solid "+T.borderFaint,maxHeight:"90vh",overflowY:"auto" }}>
+            <h3 style={{ fontSize:15,fontWeight:700,color:T.textPrimary,marginBottom:3 }}>Rechazar Guía</h3>
+            <div style={{ fontSize:11,color:T.textMuted,marginBottom:20 }}>{mmod.guia} · {mmod.source}</div>
+            
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Código guía</label>
+              <div style={{ padding:"8px 12px",background:T.bgPanel,borderRadius:T.r6,fontFamily:"'SF Mono',monospace",fontSize:12,fontWeight:600,color:T.accentBlueLt,border:"1px solid "+T.borderBlue }}>{mmod.guia}</div>
+            </div>
+
+            <div style={{ marginBottom:20,padding:14,background:T.dangerBg,borderRadius:T.r8,border:"1px solid "+T.dangerBd }}>
+              <div style={{ fontSize:10,color:T.danger,fontWeight:600,marginBottom:8,textTransform:"uppercase" }}>Problemas identificados</div>
+              <ul style={{ margin:0,paddingLeft:18,fontSize:10,color:T.danger,lineHeight:1.6 }}>
+                {mmod.issues&&mmod.issues.length>0?mmod.issues.map(function(iss,i){return <li key={i}>{iss}</li>;}):
+                  <li>Estatus: {mmod.status}</li>}
+              </ul>
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Rechazado por *</label>
+              {catalogos.nombres.length>0 ? (
+                <select value={rForm.name} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}}> 
+                  <option value="">Selecciona tu nombre…</option>
+                  {catalogos.nombres.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                </select>
+              ) : (
+                <input value={rForm.name}
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  placeholder="Tu nombre…"
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Motivo del rechazo *</label>
+              {catalogos.motivos.length>0 ? (
+                <select value={rForm.reason} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}}> 
+                  <option value="">Selecciona motivo…</option>
+                  {catalogos.motivos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+                </select>
+              ) : (
+                <textarea value={rForm.reason} rows={3}
+                  placeholder="Motivo del rechazo…"
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px",resize:"vertical"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
+              <button onClick={function(){setMmod(null);setRForm({name:"",reason:""});}}
+                style={Object.assign({},btnSec,{borderRadius:T.r8,padding:"9px 18px"})}>
+                Cancelar
+              </button>
+              <button onClick={reject}
+                disabled={rLoading||!rForm.name||!rForm.reason}
+                style={{ padding:"9px 20px",color:"white",border:"none",borderRadius:T.r8,fontSize:13,fontWeight:700,cursor:"pointer",
+                  background:(rLoading||!rForm.name||!rForm.reason)?"rgba(239,68,68,0.3)":T.danger,
+                  boxShadow:"0 2px 10px rgba(239,68,68,0.3)" }}>
+                {rLoading ? "Rechazando…" : "✕ Confirmar rechazo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
@@ -593,6 +662,75 @@ function StatCard(props) {
       <div style={{ fontSize:28,fontWeight:700,color:T.textPrimary,lineHeight:1,marginBottom:4,
         fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em" }}>{props.v.toLocaleString()}</div>
       <div style={{ fontSize:11,fontWeight:500,color:T.textSec }}>{props.l}</div>
+            {mmod && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,backdropFilter:"blur(6px)" }}>
+          <div style={{ background:T.bgSurface,borderRadius:T.r12,padding:24,maxWidth:400,width:"100%",border:"1px solid "+T.borderFaint,maxHeight:"90vh",overflowY:"auto" }}>
+            <h3 style={{ fontSize:15,fontWeight:700,color:T.textPrimary,marginBottom:3 }}>Rechazar Guía</h3>
+            <div style={{ fontSize:11,color:T.textMuted,marginBottom:20 }}>{mmod.guia} · {mmod.source}</div>
+            
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Código guía</label>
+              <div style={{ padding:"8px 12px",background:T.bgPanel,borderRadius:T.r6,fontFamily:"'SF Mono',monospace",fontSize:12,fontWeight:600,color:T.accentBlueLt,border:"1px solid "+T.borderBlue }}>{mmod.guia}</div>
+            </div>
+
+            <div style={{ marginBottom:20,padding:14,background:T.dangerBg,borderRadius:T.r8,border:"1px solid "+T.dangerBd }}>
+              <div style={{ fontSize:10,color:T.danger,fontWeight:600,marginBottom:8,textTransform:"uppercase" }}>Problemas identificados</div>
+              <ul style={{ margin:0,paddingLeft:18,fontSize:10,color:T.danger,lineHeight:1.6 }}>
+                {mmod.issues&&mmod.issues.length>0?mmod.issues.map(function(iss,i){return <li key={i}>{iss}</li>;}):
+                  <li>Estatus: {mmod.status}</li>}
+              </ul>
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Rechazado por *</label>
+              {catalogos.nombres.length>0 ? (
+                <select value={rForm.name} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}}> 
+                  <option value="">Selecciona tu nombre…</option>
+                  {catalogos.nombres.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                </select>
+              ) : (
+                <input value={rForm.name}
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  placeholder="Tu nombre…"
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Motivo del rechazo *</label>
+              {catalogos.motivos.length>0 ? (
+                <select value={rForm.reason} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}}> 
+                  <option value="">Selecciona motivo…</option>
+                  {catalogos.motivos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+                </select>
+              ) : (
+                <textarea value={rForm.reason} rows={3}
+                  placeholder="Motivo del rechazo…"
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px",resize:"vertical"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
+              <button onClick={function(){setMmod(null);setRForm({name:"",reason:""});}}
+                style={Object.assign({},btnSec,{borderRadius:T.r8,padding:"9px 18px"})}>
+                Cancelar
+              </button>
+              <button onClick={reject}
+                disabled={rLoading||!rForm.name||!rForm.reason}
+                style={{ padding:"9px 20px",color:"white",border:"none",borderRadius:T.r8,fontSize:13,fontWeight:700,cursor:"pointer",
+                  background:(rLoading||!rForm.name||!rForm.reason)?"rgba(239,68,68,0.3)":T.danger,
+                  boxShadow:"0 2px 10px rgba(239,68,68,0.3)" }}>
+                {rLoading ? "Rechazando…" : "✕ Confirmar rechazo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
@@ -610,6 +748,75 @@ function AddKw(props) {
           fontSize:12,cursor:v?"pointer":"not-allowed",fontWeight:600,whiteSpace:"nowrap" }}>
         + Agregar
       </button>
+            {mmod && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,backdropFilter:"blur(6px)" }}>
+          <div style={{ background:T.bgSurface,borderRadius:T.r12,padding:24,maxWidth:400,width:"100%",border:"1px solid "+T.borderFaint,maxHeight:"90vh",overflowY:"auto" }}>
+            <h3 style={{ fontSize:15,fontWeight:700,color:T.textPrimary,marginBottom:3 }}>Rechazar Guía</h3>
+            <div style={{ fontSize:11,color:T.textMuted,marginBottom:20 }}>{mmod.guia} · {mmod.source}</div>
+            
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Código guía</label>
+              <div style={{ padding:"8px 12px",background:T.bgPanel,borderRadius:T.r6,fontFamily:"'SF Mono',monospace",fontSize:12,fontWeight:600,color:T.accentBlueLt,border:"1px solid "+T.borderBlue }}>{mmod.guia}</div>
+            </div>
+
+            <div style={{ marginBottom:20,padding:14,background:T.dangerBg,borderRadius:T.r8,border:"1px solid "+T.dangerBd }}>
+              <div style={{ fontSize:10,color:T.danger,fontWeight:600,marginBottom:8,textTransform:"uppercase" }}>Problemas identificados</div>
+              <ul style={{ margin:0,paddingLeft:18,fontSize:10,color:T.danger,lineHeight:1.6 }}>
+                {mmod.issues&&mmod.issues.length>0?mmod.issues.map(function(iss,i){return <li key={i}>{iss}</li>;}):
+                  <li>Estatus: {mmod.status}</li>}
+              </ul>
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Rechazado por *</label>
+              {catalogos.nombres.length>0 ? (
+                <select value={rForm.name} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}}> 
+                  <option value="">Selecciona tu nombre…</option>
+                  {catalogos.nombres.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                </select>
+              ) : (
+                <input value={rForm.name}
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  placeholder="Tu nombre…"
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Motivo del rechazo *</label>
+              {catalogos.motivos.length>0 ? (
+                <select value={rForm.reason} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}}> 
+                  <option value="">Selecciona motivo…</option>
+                  {catalogos.motivos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+                </select>
+              ) : (
+                <textarea value={rForm.reason} rows={3}
+                  placeholder="Motivo del rechazo…"
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px",resize:"vertical"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
+              <button onClick={function(){setMmod(null);setRForm({name:"",reason:""});}}
+                style={Object.assign({},btnSec,{borderRadius:T.r8,padding:"9px 18px"})}>
+                Cancelar
+              </button>
+              <button onClick={reject}
+                disabled={rLoading||!rForm.name||!rForm.reason}
+                style={{ padding:"9px 20px",color:"white",border:"none",borderRadius:T.r8,fontSize:13,fontWeight:700,cursor:"pointer",
+                  background:(rLoading||!rForm.name||!rForm.reason)?"rgba(239,68,68,0.3)":T.danger,
+                  boxShadow:"0 2px 10px rgba(239,68,68,0.3)" }}>
+                {rLoading ? "Rechazando…" : "✕ Confirmar rechazo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
@@ -627,6 +834,75 @@ function AddEcPfx(props) {
           fontSize:12,cursor:p&&a?"pointer":"not-allowed",fontWeight:600 }}>
         + Agregar
       </button>
+            {mmod && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,backdropFilter:"blur(6px)" }}>
+          <div style={{ background:T.bgSurface,borderRadius:T.r12,padding:24,maxWidth:400,width:"100%",border:"1px solid "+T.borderFaint,maxHeight:"90vh",overflowY:"auto" }}>
+            <h3 style={{ fontSize:15,fontWeight:700,color:T.textPrimary,marginBottom:3 }}>Rechazar Guía</h3>
+            <div style={{ fontSize:11,color:T.textMuted,marginBottom:20 }}>{mmod.guia} · {mmod.source}</div>
+            
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Código guía</label>
+              <div style={{ padding:"8px 12px",background:T.bgPanel,borderRadius:T.r6,fontFamily:"'SF Mono',monospace",fontSize:12,fontWeight:600,color:T.accentBlueLt,border:"1px solid "+T.borderBlue }}>{mmod.guia}</div>
+            </div>
+
+            <div style={{ marginBottom:20,padding:14,background:T.dangerBg,borderRadius:T.r8,border:"1px solid "+T.dangerBd }}>
+              <div style={{ fontSize:10,color:T.danger,fontWeight:600,marginBottom:8,textTransform:"uppercase" }}>Problemas identificados</div>
+              <ul style={{ margin:0,paddingLeft:18,fontSize:10,color:T.danger,lineHeight:1.6 }}>
+                {mmod.issues&&mmod.issues.length>0?mmod.issues.map(function(iss,i){return <li key={i}>{iss}</li>;}):
+                  <li>Estatus: {mmod.status}</li>}
+              </ul>
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Rechazado por *</label>
+              {catalogos.nombres.length>0 ? (
+                <select value={rForm.name} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}}> 
+                  <option value="">Selecciona tu nombre…</option>
+                  {catalogos.nombres.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                </select>
+              ) : (
+                <input value={rForm.name}
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  placeholder="Tu nombre…"
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Motivo del rechazo *</label>
+              {catalogos.motivos.length>0 ? (
+                <select value={rForm.reason} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}}> 
+                  <option value="">Selecciona motivo…</option>
+                  {catalogos.motivos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+                </select>
+              ) : (
+                <textarea value={rForm.reason} rows={3}
+                  placeholder="Motivo del rechazo…"
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px",resize:"vertical"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
+              <button onClick={function(){setMmod(null);setRForm({name:"",reason:""});}}
+                style={Object.assign({},btnSec,{borderRadius:T.r8,padding:"9px 18px"})}>
+                Cancelar
+              </button>
+              <button onClick={reject}
+                disabled={rLoading||!rForm.name||!rForm.reason}
+                style={{ padding:"9px 20px",color:"white",border:"none",borderRadius:T.r8,fontSize:13,fontWeight:700,cursor:"pointer",
+                  background:(rLoading||!rForm.name||!rForm.reason)?"rgba(239,68,68,0.3)":T.danger,
+                  boxShadow:"0 2px 10px rgba(239,68,68,0.3)" }}>
+                {rLoading ? "Rechazando…" : "✕ Confirmar rechazo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
@@ -740,6 +1016,75 @@ function RulesTable(props) {
           + Agregar regla
         </button>
       </div>
+            {mmod && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,backdropFilter:"blur(6px)" }}>
+          <div style={{ background:T.bgSurface,borderRadius:T.r12,padding:24,maxWidth:400,width:"100%",border:"1px solid "+T.borderFaint,maxHeight:"90vh",overflowY:"auto" }}>
+            <h3 style={{ fontSize:15,fontWeight:700,color:T.textPrimary,marginBottom:3 }}>Rechazar Guía</h3>
+            <div style={{ fontSize:11,color:T.textMuted,marginBottom:20 }}>{mmod.guia} · {mmod.source}</div>
+            
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Código guía</label>
+              <div style={{ padding:"8px 12px",background:T.bgPanel,borderRadius:T.r6,fontFamily:"'SF Mono',monospace",fontSize:12,fontWeight:600,color:T.accentBlueLt,border:"1px solid "+T.borderBlue }}>{mmod.guia}</div>
+            </div>
+
+            <div style={{ marginBottom:20,padding:14,background:T.dangerBg,borderRadius:T.r8,border:"1px solid "+T.dangerBd }}>
+              <div style={{ fontSize:10,color:T.danger,fontWeight:600,marginBottom:8,textTransform:"uppercase" }}>Problemas identificados</div>
+              <ul style={{ margin:0,paddingLeft:18,fontSize:10,color:T.danger,lineHeight:1.6 }}>
+                {mmod.issues&&mmod.issues.length>0?mmod.issues.map(function(iss,i){return <li key={i}>{iss}</li>;}):
+                  <li>Estatus: {mmod.status}</li>}
+              </ul>
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Rechazado por *</label>
+              {catalogos.nombres.length>0 ? (
+                <select value={rForm.name} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}}> 
+                  <option value="">Selecciona tu nombre…</option>
+                  {catalogos.nombres.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                </select>
+              ) : (
+                <input value={rForm.name}
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  placeholder="Tu nombre…"
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Motivo del rechazo *</label>
+              {catalogos.motivos.length>0 ? (
+                <select value={rForm.reason} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}}> 
+                  <option value="">Selecciona motivo…</option>
+                  {catalogos.motivos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+                </select>
+              ) : (
+                <textarea value={rForm.reason} rows={3}
+                  placeholder="Motivo del rechazo…"
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px",resize:"vertical"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
+              <button onClick={function(){setMmod(null);setRForm({name:"",reason:""});}}
+                style={Object.assign({},btnSec,{borderRadius:T.r8,padding:"9px 18px"})}>
+                Cancelar
+              </button>
+              <button onClick={reject}
+                disabled={rLoading||!rForm.name||!rForm.reason}
+                style={{ padding:"9px 20px",color:"white",border:"none",borderRadius:T.r8,fontSize:13,fontWeight:700,cursor:"pointer",
+                  background:(rLoading||!rForm.name||!rForm.reason)?"rgba(239,68,68,0.3)":T.danger,
+                  boxShadow:"0 2px 10px rgba(239,68,68,0.3)" }}>
+                {rLoading ? "Rechazando…" : "✕ Confirmar rechazo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
@@ -762,6 +1107,10 @@ export default function App() {
   var histSt = useState([]); var hist=histSt[0],setHist=histSt[1];
   var fltSt  = useState({s:"todos",src:"todos",q:""}); var flt=fltSt[0],setFlt=fltSt[1];
   var modalSt= useState(null); var modal=modalSt[0],setModal=modalSt[1];
+  var mmodSt  = useState(null); var mmod=mmodSt[0],setMmod=mmodSt[1];
+  var rFormSt = useState({name:"",reason:""}); var rForm=rFormSt[0],setRForm=rFormSt[1];
+  var rejectsSt = useState([]); var rejects=rejectsSt[0],setRejects=rejectsSt[1];
+  var rLoadingSt = useState(false); var rLoading=rLoadingSt[0],setRLoading=rLoadingSt[1];
   var mfSt   = useState({name:"",reason:""}); var mForm=mfSt[0],setMForm=mfSt[1];
   var eoSt   = useState({}); var estOpts=eoSt[0],setEstOpts=eoSt[1];
   var loadSt = useState(false); var loading=loadSt[0],setLoading=loadSt[1];
@@ -803,6 +1152,23 @@ export default function App() {
         };
       });
       setAuths(parsed);
+    }).catch(function(){});
+
+    // Rechazadas desde Sheet
+    fetchRejections(eid).then(function(rows) {
+      var parsed = rows.map(function(r) {
+        return {
+          guia:       r["Guía"]||r["guia"]||"",
+          source:     r["Fuente"]||r["source"]||"",
+          original:   r["Original"]||r["original"]||"",
+          criticidad: r["Criticidad"]||r["criticidad"]||"",
+          problemas:  r["Problemas"]||r["problemas"]||"",
+          rejectedBy: r["Rechazada por"]||r["rejectedBy"]||"",
+          motivo:     r["Motivo"]||r["motivo"]||"",
+          fecha:      r["Fecha"]||r["fecha"]||""
+        };
+      });
+      setRejects(parsed);
     }).catch(function(){});
 
     // Reglas desde Sheet
@@ -1022,6 +1388,45 @@ export default function App() {
     setLoadMsg(""); setLoading(false);
   }
 
+  async function fetchRejections(estIdVal) {
+    try {
+      var url = APPS_SCRIPT_URL + "?action=fetchRejections&estId=" + encodeURIComponent(estIdVal);
+      var d = await jsonp(url);
+      if (d.error) throw new Error(d.error);
+      return d.rechazadas || [];
+    } catch(e) { console.warn(e); return []; }
+  }
+
+  async function reject() {
+    if (!mmod || !rForm.name || !rForm.reason) return;
+    setRLoading(true);
+    try {
+      var rejection = {
+        guia: mmod.guia,
+        source: mmod.source,
+        original: mmod.status,
+        criticidad: mmod.criticidad,
+        problemas: (mmod.issues||[]).join("; "),
+        rejectedBy: rForm.name,
+        motivo: rForm.reason,
+        fecha: new Date().toLocaleString("es-MX")
+      };
+      var url = APPS_SCRIPT_URL 
+        + "?action=appendRejection"
+        + "&estId=" + encodeURIComponent(estId)
+        + "&rejection=" + encodeURIComponent(JSON.stringify(rejection));
+      var r = await jsonp(url);
+      if (r.error) throw new Error(r.error);
+      setResults(function(prev){return prev.filter(function(x){return !(x.guia===mmod.guia&&x.source===mmod.source);});});
+      setMmod(null); setRForm({name:"",reason:""}); setRLoading(false);
+      fetchRejections(estId).then(function(d){ setRejects(d); }).catch(function(){});
+      notify("Guía "+mmod.guia+" rechazada");
+    } catch(e) {
+      console.error(e);
+      setRLoading(false);
+    }
+  }
+
   async function authorize() {
     var motivoFinal = mForm.reason === "Otros" ? motManual : mForm.reason;
     if (!mForm.name || !motivoFinal || !modal) return;
@@ -1137,6 +1542,7 @@ export default function App() {
     { id:"dashboard",      l:"Dashboard",        icon:<><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></>, badge:0 },
     { id:"resultados",     l:"Resultados",       icon:<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>, badge:results.length },
     { id:"autorizaciones", l:"Autorizaciones",   icon:<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>, badge:auths.filter(function(a){return a.source;}).length },
+    { id:"rechazadas",     l:"Rechazadas",       icon:<><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></>, badge:rejects.length },
     { id:"historico",      l:"Histórico",        icon:<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>, badge:0 },
     { id:"estandar",       l:"Estándar",         icon:<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></>, badge:0 },
     { id:"reglas",         l:"Reglas",           icon:<><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M5.34 18.66l-1.41 1.41M12 2v2M12 20v2M4.93 4.93l1.41 1.41M18.66 18.66l1.41 1.41M2 12h2M20 12h2"/></>, badge:0 },
@@ -1855,14 +2261,22 @@ export default function App() {
                                   </ul>
                                 : <span style={{ color:T.success,fontSize:10 }}>✓ Sin problemas</span>}
                             </td>
-                            <td style={{ padding:"10px 12px" }}>
+                            <td style={{ padding:"10px 12px",display:"flex",gap:6 }}>
                               {(r.status==="sospechosa"||r.status==="anomalia") && (
-                                <button onClick={function(){setModal(r);setMForm({name:"",reason:""});setEstOpts({});}}
-                                  style={{ padding:"4px 10px",background:T.accentBlue,color:"white",border:"none",
-                                    borderRadius:T.r6,fontSize:10,cursor:"pointer",fontWeight:600,
-                                    whiteSpace:"nowrap" }}>
-                                  Autorizar
-                                </button>
+                                <>
+                                  <button onClick={function(){setModal(r);setMForm({name:"",reason:""});setEstOpts({});}}
+                                    style={{ padding:"4px 10px",background:T.accentBlue,color:"white",border:"none",
+                                      borderRadius:T.r6,fontSize:10,cursor:"pointer",fontWeight:600,
+                                      whiteSpace:"nowrap" }}>
+                                    ✓ Autorizar
+                                  </button>
+                                  <button onClick={function(){setMmod(r);setRForm({name:"",reason:""});}}
+                                    style={{ padding:"4px 10px",background:T.danger,color:"white",border:"none",
+                                      borderRadius:T.r6,fontSize:10,cursor:"pointer",fontWeight:600,
+                                      whiteSpace:"nowrap" }}>
+                                    ✕ Rechazar
+                                  </button>
+                                </>
                               )}
                             </td>
                           </tr>
@@ -1945,6 +2359,65 @@ export default function App() {
 
         {/* ═══ HISTÓRICO ═══ */}
         {tab==="historico" && (
+        {tab==="rechazadas" && (
+          <div className="vge-fade">
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
+              <div>
+                <h2 style={{ fontSize:18,fontWeight:700,color:T.textPrimary,letterSpacing:"-0.02em",marginBottom:4 }}>Guías Rechazadas</h2>
+                <div style={{ fontSize:12,color:T.textMuted }}>{rejects.length} rechazos registrados</div>
+              </div>
+              {rejects.length>0 && (
+                <button onClick={function(){expCsv(rejects.map(function(r){
+                  return {"Guía":r.guia,"Fuente":r.source,"Estatus":r.original,"Criticidad":r.criticidad,
+                    "Problemas":r.problemas,"Rechazado por":r.rejectedBy,"Motivo":r.motivo,"Fecha":r.fecha};
+                }),"rechazadas.csv");}} style={Object.assign({},btnSec,{borderRadius:T.r8,display:"flex",alignItems:"center",gap:6})}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Exportar
+                </button>
+              )}
+            </div>
+            {rejects.length===0 ? <Empty msg="No hay rechazos registrados" sub="Las guías rechazadas aparecerán aquí" /> : (
+              <div style={{ borderRadius:T.r12,border:"1px solid "+T.borderFaint,overflow:"hidden" }}>
+                <table style={{ width:"100%",borderCollapse:"collapse",fontSize:12 }}>
+                  <thead>
+                    <tr style={{ background:T.bgPanel,borderBottom:"1px solid "+T.borderFaint }}>
+                      {["Guía","Fuente","Estatus","Criticidad","Problemas","Rechazado por","Motivo","Fecha"].map(function(h,i){
+                        return <th key={i} style={thSt}>{h}</th>;
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rejects.map(function(r,i){
+                      return (
+                        <tr key={i} className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66",
+                          background:i%2===0?T.bgSurface:T.bgPanel }}>
+                          <td style={{ padding:"10px 12px",fontFamily:"'SF Mono',monospace",fontSize:11,fontWeight:600,color:T.textPrimary }}>{r.guia}</td>
+                          <td style={{ padding:"10px 12px",fontSize:11,color:T.textSec }}>{r.source}</td>
+                          <td style={{ padding:"10px 12px" }}><SBadge s={r.original}/></td>
+                          <td style={{ padding:"10px 12px" }}><CBadge v={r.criticidad}/></td>
+                          <td style={{ padding:"10px 12px",fontSize:10,color:T.danger,maxWidth:160,lineHeight:1.5 }}>{r.problemas||"—"}</td>
+                          <td style={{ padding:"10px 12px",fontWeight:600,fontSize:12,color:T.textPrimary }}>{r.rejectedBy}</td>
+                          <td style={{ padding:"10px 12px",color:T.textSec,fontSize:11,maxWidth:160 }}>{r.motivo}</td>
+                          <td style={{ padding:"10px 12px",fontSize:10,color:T.textMuted,whiteSpace:"nowrap" }}>{r.fecha}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div style={{ marginTop:14,padding:14,background:T.dangerBg,borderRadius:T.r8,
+              border:"1px solid "+T.dangerBd,fontSize:11,color:T.danger,display:"flex",gap:8,alignItems:"center" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={T.danger} strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              Los rechazos se registran en tu hoja "Historial de Rechazadas" del Google Sheet.
+            </div>
+          </div>
+        )}
+
           <div className="vge-fade">
             <h2 style={{ fontSize:18,fontWeight:700,color:T.textPrimary,letterSpacing:"-0.02em",marginBottom:4 }}>Histórico</h2>
             <p style={{ fontSize:12,color:T.textMuted,marginBottom:20 }}>Últimas {hist.length} ejecuciones guardadas.</p>
@@ -2291,6 +2764,75 @@ export default function App() {
           </div>
         </div>
       )}
+            {mmod && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,backdropFilter:"blur(6px)" }}>
+          <div style={{ background:T.bgSurface,borderRadius:T.r12,padding:24,maxWidth:400,width:"100%",border:"1px solid "+T.borderFaint,maxHeight:"90vh",overflowY:"auto" }}>
+            <h3 style={{ fontSize:15,fontWeight:700,color:T.textPrimary,marginBottom:3 }}>Rechazar Guía</h3>
+            <div style={{ fontSize:11,color:T.textMuted,marginBottom:20 }}>{mmod.guia} · {mmod.source}</div>
+            
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Código guía</label>
+              <div style={{ padding:"8px 12px",background:T.bgPanel,borderRadius:T.r6,fontFamily:"'SF Mono',monospace",fontSize:12,fontWeight:600,color:T.accentBlueLt,border:"1px solid "+T.borderBlue }}>{mmod.guia}</div>
+            </div>
+
+            <div style={{ marginBottom:20,padding:14,background:T.dangerBg,borderRadius:T.r8,border:"1px solid "+T.dangerBd }}>
+              <div style={{ fontSize:10,color:T.danger,fontWeight:600,marginBottom:8,textTransform:"uppercase" }}>Problemas identificados</div>
+              <ul style={{ margin:0,paddingLeft:18,fontSize:10,color:T.danger,lineHeight:1.6 }}>
+                {mmod.issues&&mmod.issues.length>0?mmod.issues.map(function(iss,i){return <li key={i}>{iss}</li>;}):
+                  <li>Estatus: {mmod.status}</li>}
+              </ul>
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Rechazado por *</label>
+              {catalogos.nombres.length>0 ? (
+                <select value={rForm.name} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}}> 
+                  <option value="">Selecciona tu nombre…</option>
+                  {catalogos.nombres.map(function(n){return <option key={n} value={n}>{n}</option>;})}
+                </select>
+              ) : (
+                <input value={rForm.name}
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  placeholder="Tu nombre…"
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{name:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Motivo del rechazo *</label>
+              {catalogos.motivos.length>0 ? (
+                <select value={rForm.reason} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}}> 
+                  <option value="">Selecciona motivo…</option>
+                  {catalogos.motivos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+                </select>
+              ) : (
+                <textarea value={rForm.reason} rows={3}
+                  placeholder="Motivo del rechazo…"
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px",resize:"vertical"})}
+                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}} />
+              )}
+            </div>
+
+            <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
+              <button onClick={function(){setMmod(null);setRForm({name:"",reason:""});}}
+                style={Object.assign({},btnSec,{borderRadius:T.r8,padding:"9px 18px"})}>
+                Cancelar
+              </button>
+              <button onClick={reject}
+                disabled={rLoading||!rForm.name||!rForm.reason}
+                style={{ padding:"9px 20px",color:"white",border:"none",borderRadius:T.r8,fontSize:13,fontWeight:700,cursor:"pointer",
+                  background:(rLoading||!rForm.name||!rForm.reason)?"rgba(239,68,68,0.3)":T.danger,
+                  boxShadow:"0 2px 10px rgba(239,68,68,0.3)" }}>
+                {rLoading ? "Rechazando…" : "✕ Confirmar rechazo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
