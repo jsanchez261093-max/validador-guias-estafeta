@@ -1327,7 +1327,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ═══ DASHBOARD ═══ */
         {/* ═══ DASHBOARD ═══ */}
         {tab==="dashboard" && results.length===0 && (
           <div className="vge-fade">
