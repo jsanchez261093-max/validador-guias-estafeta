@@ -63,6 +63,9 @@ var OPS = [
   { key:"regex",      label:"Expresión regular" }
 ];
 
+
+
+
 // ═══════════════════════════════════════════════════════════
 // DESIGN SYSTEM — Enterprise SaaS Dark Navy
 // Inspired by: Linear, Vercel, Stripe, Datadog, Supabase
@@ -149,6 +152,103 @@ var thSt = {
 };
 var tdSt = { padding:"11px 12px", fontSize:12, color:T.textPrimary };
 
+import { useState, useEffect } from "react";
+import Papa from "papaparse";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+
+// ── URL de tu Apps Script ──────────────────────────────────
+var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwF2KrrM0DgqntqRCf4d55SIEkMRGE2__dWZEh74LsOIQNCF_cB7CvwALEnujWLjEAM/exec";
+
+// ── Sheet IDs & config ─────────────────────────────────────
+var DEF_HIST_ID = "1Uzlnt5BtPHB8OwLvS_TrE0H9azaGL5QLd4PYEt5611M";
+var DEF_EST_ID  = "1Gt6ohFuEyQeY8hY-URxPLjX4oKGPda1BrXgLuTx3wrc";
+
+var VALID_CLIENTS = new Set([5011124, 8665087, 5901359, 4003984]);
+
+var CMD_COLUMNS = [
+  "Razón Social del cliente","Número de cliente","No. de guía","Código de rastreo",
+  "Referencia del ítem","Centro de costo","Razón Social Origen","Alias Dirección Origen",
+  "Dirección Origen","Razón Social Destino","Alias Dirección Destino","Dirección Destino",
+  "Tipo de Destino","Tipo de empaque","Peso","Servicio","Contenido","Cumple con Garantía",
+  "Tipo de salida","Usuario que le generó","Fecha de generación","Fecha de vigencia"
+];
+var CMD_FIELD_DEFS = CMD_COLUMNS.map(function(c) { return { key: c, label: c }; });
+
+var DEFAULT_ORIGEN_RULES = [
+  { id:"or1",  field:"Alias Dirección Destino", op:"contains",   val:"CEDISST",      result:"Servicio / Almacén",    active:true },
+  { id:"or2",  field:"Alias Dirección Destino", op:"contains",   val:"ALMACEN",      result:"Servicio / Almacén",    active:true },
+  { id:"or3",  field:"Centro de costo",         op:"contains",   val:"TICKET",       result:"Garantía Cliente",      active:true },
+  { id:"or4",  field:"Alias Dirección Origen",  op:"contains",   val:"GARANTIA",     result:"Garantía Cliente",      active:true },
+  { id:"or5",  field:"Razón Social Origen",     op:"contains",   val:"OXXO",         result:"Cadenas Comerciales",   active:true },
+  { id:"or6",  field:"Razón Social Origen",     op:"contains",   val:"CHEDRAUI",     result:"Cadenas Comerciales",   active:true },
+  { id:"or7",  field:"Razón Social Origen",     op:"contains",   val:"WALMART",      result:"Cadenas Comerciales",   active:true },
+  { id:"or8",  field:"Razón Social Origen",     op:"contains",   val:"CEDIS.COM",    result:"Ecommerce",             active:true },
+  { id:"or9",  field:"Alias Dirección Origen",  op:"contains",   val:"CEDIS.COM",    result:"Ecommerce",             active:true },
+  { id:"or10", field:"Alias Dirección Origen",  op:"startsWith", val:"PALMAS",       result:"Palmas",                active:true },
+  { id:"or11", field:"Alias Dirección Origen",  op:"regex",      val:"^T\\d",        result:"Tienda",                active:true }
+];
+var DEFAULT_DESTINO_RULES = [
+  { id:"dr1",  field:"Centro de costo",         op:"contains",   val:"TICKET",        result:"Garantía Cliente",           active:true },
+  { id:"dr2",  field:"Alias Dirección Destino", op:"contains",   val:"CEDISST",       result:"Señuelo / Serv. Técnico",    active:true },
+  { id:"dr3",  field:"Alias Dirección Destino", op:"contains",   val:"CEDIS.COM",     result:"Ecommerce / Dir. a Cliente", active:true },
+  { id:"dr4",  field:"Alias Dirección Destino", op:"contains",   val:"E-COMMERCE",    result:"Ecommerce / Dir. a Cliente", active:true },
+  { id:"dr5",  field:"Alias Dirección Destino", op:"contains",   val:"ECOMMERCE",     result:"Ecommerce / Dir. a Cliente", active:true },
+  { id:"dr6",  field:"Alias Dirección Destino", op:"startsWith", val:"CAD",           result:"Cadenas Comerciales",        active:true },
+  { id:"dr7",  field:"Alias Dirección Destino", op:"startsWith", val:"TMK",           result:"Telemarketing",              active:true },
+  { id:"dr8",  field:"Alias Dirección Destino", op:"startsWith", val:"CVTE",          result:"Ventas Empresariales",       active:true },
+  { id:"dr9",  field:"Alias Dirección Destino", op:"startsWith", val:"CDIR",          result:"Dirección",                  active:true },
+  { id:"dr10", field:"Razón Social Destino",    op:"contains",   val:"DISTRIBUIDORA", result:"Almacén",                   active:true },
+  { id:"dr11", field:"Razón Social Destino",    op:"contains",   val:"LEGAL",         result:"Documentos Legal",           active:true }
+];
+var DEFAULT_WS_CONFIG = {
+  trKeywords:            ["TR","tr"],
+  camKeywords:           ["Cambio de catalogo"],
+  ecPrefixes:            [
+    { prefix:"73", accounts:"5901359" },
+    { prefix:"72", accounts:"5901359,5011124" },
+    { prefix:"74", accounts:"5901359,5011124" }
+  ],
+  concentradoraAccounts: ["4003656","4003984"]
+};
+var OPS = [
+  { key:"contains",   label:"Contiene"         },
+  { key:"startsWith", label:"Empieza con"       },
+  { key:"equals",     label:"Igual a"           },
+  { key:"regex",      label:"Expresión regular" }
+];
+
+// ═══════════════════════════════════════════════════════════
+// DESIGN SYSTEM — Enterprise SaaS Dark Navy
+// Inspired by: Linear, Vercel, Stripe, Datadog, Supabase
+// ═══════════════════════════════════════════════════════════
+
+// Status config (updated palette)
+var SC = {
+  valida:     { l:"Válida",     c:T.success,  bg:T.successBg,  bc:T.successBd,  ic:"✓" },
+  sospechosa: { l:"Sospechosa", c:T.warning,  bg:T.warningBg,  bc:T.warningBd,  ic:"⚠" },
+  anomalia:   { l:"Anomalía",   c:T.danger,   bg:T.dangerBg,   bc:T.dangerBd,   ic:"✕" },
+  autorizada: { l:"Autorizada", c:T.purple,   bg:T.purpleBg,   bc:T.purpleBd,   ic:"●" }
+};
+var CC  = { "OK":T.success,"Medio":T.warning,"Alto":T.danger,"Crítico":"#dc2626" };
+var CBG = { "OK":T.successBg,"Medio":T.warningBg,"Alto":T.dangerBg,"Crítico":T.dangerBg };
+
+// Common style objects
+var selSt = {
+  padding:"7px 11px", borderRadius:T.r8, border:"1px solid "+T.borderLight,
+  fontSize:12, background:T.bgPanel, color:T.textPrimary,
+  outline:"none", transition:"border-color 0.15s"
+};
+var btnSec = {
+  padding:"7px 14px", background:T.bgHover, border:"1px solid "+T.borderLight,
+  borderRadius:T.r8, fontSize:12, cursor:"pointer", color:T.textPrimary,
+  transition:"all 0.15s "+T.ease, fontWeight:500
+};
+var thSt = {
+  padding:"10px 12px", textAlign:"left", fontWeight:600,
+  color:T.textMuted, fontSize:10, textTransform:"uppercase", letterSpacing:"0.07em"
+};
+var tdSt = { padding:"11px 12px", fontSize:12, color:T.textPrimary };
+
 // Inject global CSS
 if (typeof document !== "undefined") {
   var styleEl = document.getElementById("vge-global-styles") || document.createElement("style");
@@ -187,6 +287,13 @@ if (typeof document !== "undefined") {
 }
 
 // ── Pure helpers ───────────────────────────────────────────
+// ── LocalStorage wrapper ──────────────────────────────────
+var LS = {
+  get: function(k) { try { return JSON.parse(localStorage.getItem(k)); } catch(e) { return null; } },
+  set: function(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
+};
+
+
 function gv(row, key) {
   if (!row) return "";
   var k = Object.keys(row).find(function(k2) { return k2.trim().toLowerCase() === key.trim().toLowerCase(); });
@@ -1314,8 +1421,8 @@ export default function App() {
                     );
                   })}
                   <button onClick={async function(){
-                    await window.localStorage.setItem("histId",histId);
-                    await window.localStorage.setItem("estId",estId);
+                    window.localStorage.setItem("histId",histId);
+                    window.localStorage.setItem("estId",estId);
                     notify("IDs guardados");setShowCfg(false);
                   }} style={{ padding:"8px 18px",background:T.accentBlue,color:"white",
                     border:"none",borderRadius:T.r8,fontSize:12,cursor:"pointer",fontWeight:600 }}>
