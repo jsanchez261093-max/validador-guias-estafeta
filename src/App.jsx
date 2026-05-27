@@ -152,10 +152,6 @@ var thSt = {
 };
 var tdSt = { padding:"11px 12px", fontSize:12, color:T.textPrimary };
 
-import { useState, useEffect } from "react";
-import Papa from "papaparse";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-
 // ── URL de tu Apps Script ──────────────────────────────────
 var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwF2KrrM0DgqntqRCf4d55SIEkMRGE2__dWZEh74LsOIQNCF_cB7CvwALEnujWLjEAM/exec";
 
