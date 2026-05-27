@@ -2359,6 +2359,55 @@ export default function App() {
 
         {/* ═══ HISTÓRICO ═══ */}
         {tab==="historico" && (
+          <div className="vge-fade">
+            <h2 style={{ fontSize:18,fontWeight:700,color:T.textPrimary,letterSpacing:"-0.02em",marginBottom:4 }}>Histórico</h2>
+            <p style={{ fontSize:12,color:T.textMuted,marginBottom:20 }}>Últimas {hist.length} validaciones guardadas.</p>
+            {hist.length===0 ? <Empty msg="Sin validaciones registradas" sub="Ejecuta tu primera validación para ver el historial aquí" /> : (
+              <div style={{ display:"grid",gap:10 }}>
+                {hist.map(function(b,i){
+                  var pOk=b.total>0?Math.round(b.validas/b.total*100):0;
+                  return (
+                    <div key={b.id} className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
+                      padding:"16px 20px",border:"1px solid "+T.borderFaint,display:"flex",alignItems:"center",gap:16 }}>
+                      <div style={{ width:36,height:36,background:T.bgHover,borderRadius:T.r8,
+                        border:"1px solid "+T.borderLight,display:"flex",alignItems:"center",justifyContent:"center",
+                        fontSize:12,fontWeight:700,color:T.accentBlueLt,flexShrink:0 }}>{hist.length-i}</div>
+                      <div style={{ flex:1,minWidth:0 }}>
+                        <div style={{ fontWeight:600,fontSize:13,color:T.textPrimary,marginBottom:3 }}>{b.periodo}</div>
+                        <div style={{ fontSize:10,color:T.textMuted }}>
+                          {b.fecha} · Cmd:{b.cmd} WS:{b.ws}
+                          {b.modo&&<span style={{ marginLeft:8,padding:"1px 6px",background:T.accentGlow,
+                            color:T.accentBlueLt,borderRadius:20,fontSize:9,fontWeight:600,
+                            border:"1px solid "+T.borderBlue }}>{b.modo}</span>}
+                          {b.discarded>0&&<span style={{ marginLeft:8,color:T.warning }}>{b.discarded} desc.</span>}
+                        </div>
+                      </div>
+                      <div style={{ width:80,flexShrink:0 }}>
+                        <div style={{ height:4,background:T.bgHover,borderRadius:4,overflow:"hidden",marginBottom:3 }}>
+                          <div style={{ height:"100%",width:pOk+"%",
+                            background:pOk>=90?T.success:pOk>=70?T.warning:T.danger,borderRadius:4 }}/>
+                        </div>
+                        <div style={{ fontSize:9,color:pOk>=90?T.success:pOk>=70?T.warning:T.danger,
+                          fontWeight:600,textAlign:"right" }}>{pOk}% OK</div>
+                      </div>
+                      <div style={{ display:"flex",gap:14,flexShrink:0 }}>
+                        {[{l:"Total",v:b.total,c:T.textSec},{l:"Válidas",v:b.validas,c:T.success},
+                          {l:"Sosp.",v:b.sospechosas,c:T.warning},{l:"Anom.",v:b.anomalias,c:T.danger}].map(function(x){
+                          return <div key={x.l} style={{ textAlign:"center" }}>
+                            <div style={{ fontSize:16,fontWeight:700,color:x.c }}>{x.v}</div>
+                            <div style={{ fontSize:9,color:x.c,opacity:0.7 }}>{x.l}</div>
+                          </div>;
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══ RECHAZADAS ═══ */}
         {tab==="rechazadas" && (
           <div className="vge-fade">
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
@@ -2378,7 +2427,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            {rejects.length===0 ? <Empty msg="No hay rechazos registrados" sub="Las guías rechazadas aparecerán aquí" /> : (
+            {rejects.length===0 ? <Empty msg="No hay rechazos registrados" sub="Las guías rechazadas aparecerán aquí cuando uses el botón Rechazar" /> : (
               <div style={{ borderRadius:T.r12,border:"1px solid "+T.borderFaint,overflow:"hidden" }}>
                 <table style={{ width:"100%",borderCollapse:"collapse",fontSize:12 }}>
                   <thead>
@@ -2413,63 +2462,11 @@ export default function App() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={T.danger} strokeWidth="2">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
-              Los rechazos se registran en tu hoja "Historial de Rechazadas" del Google Sheet.
+              Los rechazos se registran en "Historial de Rechazadas" de tu Google Sheet.
             </div>
           </div>
         )}
 
-          <div className="vge-fade">
-            <h2 style={{ fontSize:18,fontWeight:700,color:T.textPrimary,letterSpacing:"-0.02em",marginBottom:4 }}>Histórico</h2>
-            <p style={{ fontSize:12,color:T.textMuted,marginBottom:20 }}>Últimas {hist.length} ejecuciones guardadas.</p>
-            {hist.length===0 ? <Empty msg="Sin validaciones registradas" sub="Ejecuta tu primera validación para ver el historial aquí" /> : (
-              <div style={{ display:"grid",gap:10 }}>
-                {hist.map(function(b,i){
-                  var pOk=b.total>0?Math.round(b.validas/b.total*100):0;
-                  return (
-                    <div key={b.id} className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
-                      padding:"16px 20px",border:"1px solid "+T.borderFaint,display:"flex",alignItems:"center",gap:16 }}>
-                      <div style={{ width:36,height:36,background:T.bgHover,borderRadius:T.r8,
-                        border:"1px solid "+T.borderLight,display:"flex",alignItems:"center",justifyContent:"center",
-                        fontSize:12,fontWeight:700,color:T.accentBlueLt,flexShrink:0 }}>{hist.length-i}</div>
-                      <div style={{ flex:1,minWidth:0 }}>
-                        <div style={{ fontWeight:600,fontSize:13,color:T.textPrimary,marginBottom:3 }}>{b.periodo}</div>
-                        <div style={{ fontSize:10,color:T.textMuted }}>
-                          {b.fecha} · Cmd:{b.cmd} WS:{b.ws}
-                          {b.modo&&<span style={{ marginLeft:8,padding:"1px 6px",background:T.accentGlow,
-                            color:T.accentBlueLt,borderRadius:20,fontSize:9,fontWeight:600,
-                            border:"1px solid "+T.borderBlue }}>{b.modo}</span>}
-                          {b.discarded>0&&<span style={{ marginLeft:8,color:T.warning }}>{b.discarded} desc.</span>}
-                        </div>
-                      </div>
-                      {/* Progress bar */}
-                      <div style={{ width:80, flexShrink:0 }}>
-                        <div style={{ height:4,background:T.bgHover,borderRadius:4,overflow:"hidden",marginBottom:3 }}>
-                          <div style={{ height:"100%",width:pOk+"%",
-                            background:pOk>=90?T.success:pOk>=70?T.warning:T.danger,
-                            borderRadius:4 }}/>
-                        </div>
-                        <div style={{ fontSize:9,color:pOk>=90?T.success:pOk>=70?T.warning:T.danger,
-                          fontWeight:600,textAlign:"right" }}>{pOk}% OK</div>
-                      </div>
-                      {/* Stats */}
-                      <div style={{ display:"flex",gap:16,flexShrink:0 }}>
-                        {[{l:"Total",v:b.total,c:T.textPrimary},{l:"Válidas",v:b.validas,c:T.success},
-                          {l:"Sosp.",v:b.sospechosas,c:T.warning},{l:"Anom.",v:b.anomalias,c:T.danger}].map(function(x){
-                          return <div key={x.l} style={{ textAlign:"center" }}>
-                            <div style={{ fontSize:18,fontWeight:700,color:x.c,letterSpacing:"-0.02em" }}>{x.v}</div>
-                            <div style={{ fontSize:9,color:T.textMuted,fontWeight:500 }}>{x.l}</div>
-                          </div>;
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ═══ ESTÁNDAR ═══ */}
         {tab==="estandar" && (
           <div className="vge-fade">
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20 }}>
