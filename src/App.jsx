@@ -425,6 +425,13 @@ async function fetchCatalogos(estId) {
   return d; // { nombres: [...], motivos: [...] }
 }
 
+async function fetchRejectMotivosAPI(estId) {
+  var url = APPS_SCRIPT_URL + "?action=fetchRejectMotivos&estId=" + encodeURIComponent(estId);
+  var d = await jsonp(url);
+  if (d.error) throw new Error(d.error);
+  return d.motivos || [];
+}
+
 async function fetchWsConfFromSheet(estId) {
   var url = APPS_SCRIPT_URL + "?action=fetchWsConf&estId=" + encodeURIComponent(estId);
   var d = await jsonp(url);
@@ -787,6 +794,8 @@ export default function App() {
   var showCfgSt = useState(false); var showCfg=showCfgSt[0],setShowCfg=showCfgSt[1];
   var catSt    = useState({nombres:[],motivos:[]}); var catalogos=catSt[0],setCatalogos=catSt[1];
   var motManSt = useState(""); var motManual=motManSt[0],setMotManual=motManSt[1];
+  var motRechSt = useState([]); var motivosRech=motRechSt[0],setMotivosRech=motRechSt[1];
+  var motRechManSt = useState(""); var motRechManual=motRechManSt[0],setMotRechManual=motRechManSt[1];
 
   useEffect(function() {
     // IDs guardados localmente
@@ -857,6 +866,11 @@ export default function App() {
     // Catálogos: nombres autorizadores y motivos históricos
     fetchCatalogos(eid).then(function(d) {
       if (d) setCatalogos({ nombres: d.nombres||[], motivos: d.motivos||[] });
+    }).catch(function(){});
+
+    // Motivos de rechazo (col Motivo de "Historial de Rechazadas")
+    fetchRejectMotivosAPI(eid).then(function(mots) {
+      setMotivosRech(mots || []);
     }).catch(function(){});
   }, []);
 
@@ -1063,7 +1077,8 @@ export default function App() {
   }
 
   async function reject() {
-    if (!mmod || !rForm.name || !rForm.reason) return;
+    var motivoFinal = rForm.reason === "Otros" ? motRechManual : rForm.reason;
+    if (!mmod || !rForm.name || !motivoFinal) return;
     setRLoading(true);
     try {
       var rejection = {
@@ -1073,7 +1088,7 @@ export default function App() {
         criticidad: mmod.criticidad,
         problemas: (mmod.issues||[]).join("; "),
         rejectedBy: rForm.name,
-        motivo: rForm.reason,
+        motivo: motivoFinal,
         fecha: new Date().toLocaleString("es-MX")
       };
       var url = APPS_SCRIPT_URL 
@@ -1083,8 +1098,10 @@ export default function App() {
       var r = await jsonp(url);
       if (r.error) throw new Error(r.error);
       setResults(function(prev){return prev.filter(function(x){return !(x.guia===mmod.guia&&x.source===mmod.source);});});
-      setMmod(null); setRForm({name:"",reason:""}); setRLoading(false);
+      setMmod(null); setRForm({name:"",reason:""}); setMotRechManual(""); setRLoading(false);
       fetchRejections(estId).then(function(d){ setRejects(d); }).catch(function(){});
+      // Recargar motivos para que el nuevo aparezca en futuros dropdowns
+      fetchRejectMotivosAPI(estId).then(function(mots){ setMotivosRech(mots||[]); }).catch(function(){});
       notify("Guía "+mmod.guia+" rechazada");
     } catch(e) {
       console.error(e);
@@ -2477,29 +2494,34 @@ export default function App() {
 
             <div style={{ marginBottom:20 }}>
               <label style={{ fontSize:11,fontWeight:700,display:"block",marginBottom:6,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Motivo del rechazo *</label>
-              {catalogos.motivos.length>0 ? (
+              {motivosRech.length>0 ? (
                 <select value={rForm.reason} style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px"})}
                   onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}}> 
                   <option value="">Selecciona motivo…</option>
-                  {catalogos.motivos.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+                  {motivosRech.map(function(m){return <option key={m} value={m}>{m}</option>;})}
+                  <option value="Otros">Otros (escribir)</option>
                 </select>
-              ) : (
-                <textarea value={rForm.reason} rows={3}
+              ) : null}
+              {(motivosRech.length===0 || rForm.reason==="Otros") && (
+                <textarea value={rForm.reason==="Otros"?motRechManual:rForm.reason} rows={3}
                   placeholder="Motivo del rechazo…"
-                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px",resize:"vertical"})}
-                  onChange={function(e){setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});}} />
+                  style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",fontSize:13,padding:"10px 12px",resize:"vertical",marginTop:motivosRech.length>0?8:0})}
+                  onChange={function(e){
+                    if(rForm.reason==="Otros") setMotRechManual(e.target.value);
+                    else setRForm(function(f){return Object.assign({},f,{reason:e.target.value});});
+                  }} />
               )}
             </div>
 
             <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
-              <button onClick={function(){setMmod(null);setRForm({name:"",reason:""});}}
+              <button onClick={function(){setMmod(null);setRForm({name:"",reason:""});setMotRechManual("");}}
                 style={Object.assign({},btnSec,{borderRadius:T.r8,padding:"9px 18px"})}>
                 Cancelar
               </button>
               <button onClick={reject}
-                disabled={rLoading||!rForm.name||!rForm.reason}
+                disabled={rLoading||!rForm.name||!rForm.reason||(rForm.reason==="Otros"&&!motRechManual)}
                 style={{ padding:"9px 20px",color:"white",border:"none",borderRadius:T.r8,fontSize:13,fontWeight:700,cursor:"pointer",
-                  background:(rLoading||!rForm.name||!rForm.reason)?"rgba(239,68,68,0.3)":T.danger,
+                  background:(rLoading||!rForm.name||!rForm.reason||(rForm.reason==="Otros"&&!motRechManual))?"rgba(239,68,68,0.3)":T.danger,
                   boxShadow:"0 2px 10px rgba(239,68,68,0.3)" }}>
                 {rLoading ? "Rechazando…" : "✕ Confirmar rechazo"}
               </button>
