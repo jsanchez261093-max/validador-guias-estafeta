@@ -1177,15 +1177,16 @@ export default function App() {
   var stS=results.filter(function(r){return r.status==="sospechosa";}).length;
   var stA=results.filter(function(r){return r.status==="anomalia";}).length;
   var stAu=results.filter(function(r){return r.status==="autorizada";}).length;
+  var stR=rejects.length;
   var fltd = results.filter(function(r) {
     var q=flt.q.toLowerCase();
     return (flt.s==="todos"||r.status===flt.s)&&(flt.src==="todos"||r.source===flt.src)
       &&(!flt.q||(r.guia&&r.guia.includes(flt.q))||(r.usuario&&r.usuario.toLowerCase().includes(q))||(r.razonSocial&&r.razonSocial.toLowerCase().includes(q)));
   });
-  var pieData=[{n:"Válidas",v:stV,f:"#22c55e"},{n:"Sospechosas",v:stS,f:"#f59e0b"},{n:"Anomalías",v:stA,f:"#ef4444"},{n:"Autorizadas",v:stAu,f:"#8b5cf6"}].filter(function(d){return d.v>0;});
+  var pieData=[{n:"Válidas",v:stV,f:"#22c55e"},{n:"Sospechosas",v:stS,f:"#f59e0b"},{n:"Anomalías",v:stA,f:"#ef4444"},{n:"Autorizadas",v:stAu,f:"#8b5cf6"},{n:"Rechazadas",v:stR,f:"#dc2626"}].filter(function(d){return d.v>0;});
   var toMap={};results.forEach(function(r){if(r.tipoOrigen&&r.tipoOrigen!=="—")toMap[r.tipoOrigen]=(toMap[r.tipoOrigen]||0)+1;});
   var toCounts=Object.entries(toMap).sort(function(a,b){return b[1]-a[1];}).slice(0,8).map(function(e){return{n:e[0],v:e[1]};});
-  var barData=["Comando","Web Service"].map(function(src){return{name:src==="Comando"?"Comando":"Web Svc",Válidas:results.filter(function(r){return r.source===src&&r.status==="valida";}).length,Sospechosas:results.filter(function(r){return r.source===src&&r.status==="sospechosa";}).length,Anomalías:results.filter(function(r){return r.source===src&&r.status==="anomalia";}).length};});
+  var barData=["Comando","Web Service"].map(function(src){return{name:src==="Comando"?"Comando":"Web Svc",Válidas:results.filter(function(r){return r.source===src&&r.status==="valida";}).length,Sospechosas:results.filter(function(r){return r.source===src&&r.status==="sospechosa";}).length,Anomalías:results.filter(function(r){return r.source===src&&r.status==="anomalia";}).length,Rechazadas:rejects.filter(function(r){return r.source===src;}).length};});
   var critCards=["OK","Medio","Alto","Crítico"].map(function(c){return{l:c,n:results.filter(function(r){return r.criticidad===c;}).length};}).filter(function(x){return x.n>0;});
   var cmdDateMap={};
   results.filter(function(r){return r.source==="Comando";}).forEach(function(r){var d=parseFechaDay(r.fecha);if(d){if(!cmdDateMap[d])cmdDateMap[d]={total:0,validas:0,sospechosas:0,anomalias:0};cmdDateMap[d].total++;if(r.status==="valida")cmdDateMap[d].validas++;if(r.status==="sospechosa")cmdDateMap[d].sospechosas++;if(r.status==="anomalia")cmdDateMap[d].anomalias++;}});
@@ -1535,7 +1536,7 @@ export default function App() {
             </div>
 
             {/* ── KPI Cards ── */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:12, marginBottom:20 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:12, marginBottom:20 }}>
               <StatCard l="Total" v={stT} i={0} total={stT} accent={T.accentBlue}
                 icon={<><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>}/>
               <StatCard l="Válidas" v={stV} i={1} total={stT} accent={T.success}
@@ -1546,6 +1547,8 @@ export default function App() {
                 icon={<><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></>}/>
               <StatCard l="Autorizadas" v={stAu} i={4} total={stT} accent={T.purple}
                 icon={<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>}/>
+              <StatCard l="Rechazadas" v={stR} i={5} total={stT} accent="#dc2626"
+                icon={<><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></>}/>
             </div>
 
             {/* ── Row 1: Pie + Bar fuente + Tipo Origen ── */}
@@ -1590,6 +1593,7 @@ export default function App() {
                     <Bar dataKey="Válidas" fill={T.chartGreen} radius={[4,4,0,0]}/>
                     <Bar dataKey="Sospechosas" fill={T.chartAmber} radius={[4,4,0,0]}/>
                     <Bar dataKey="Anomalías" fill={T.chartRed} radius={[4,4,0,0]}/>
+                    <Bar dataKey="Rechazadas" fill="#dc2626" radius={[4,4,0,0]}/>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1689,12 +1693,20 @@ export default function App() {
                 results.forEach(function(r){
                   var k = fechaToKey(r.fecha,"dia");
                   if(!k) return;
-                  if(!allDays[k]) allDays[k]={dia:k,total:0,validas:0,sospechosas:0,anomalias:0,autorizadas:0};
+                  if(!allDays[k]) allDays[k]={dia:k,total:0,validas:0,sospechosas:0,anomalias:0,autorizadas:0,rechazadas:0};
                   allDays[k].total++;
                   if(r.status==="valida")      allDays[k].validas++;
                   if(r.status==="sospechosa")  allDays[k].sospechosas++;
                   if(r.status==="anomalia")    allDays[k].anomalias++;
                   if(r.status==="autorizada")  allDays[k].autorizadas++;
+                });
+                // Sumar rechazadas (vienen de Sheet, no de results)
+                rejects.forEach(function(r){
+                  var k = fechaToKey(r.fecha,"dia");
+                  if(!k) return;
+                  if(!allDays[k]) allDays[k]={dia:k,total:0,validas:0,sospechosas:0,anomalias:0,autorizadas:0,rechazadas:0};
+                  allDays[k].rechazadas++;
+                  allDays[k].total++;
                 });
                 var rows = Object.values(allDays).sort(function(a,b){return a.dia.localeCompare(b.dia);});
                 if(rows.length===0) return <div style={{ textAlign:"center",padding:24,fontSize:11,color:T.textMuted }}>Sin datos de fechas</div>;
@@ -1703,14 +1715,14 @@ export default function App() {
                     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                       <thead>
                         <tr style={{ borderBottom:"1px solid "+T.borderFaint }}>
-                          {["Fecha","Total","Válidas","Sospechosas","Anomalías","Autorizadas","% Ok"].map(function(h){
+                          {["Fecha","Total","Válidas","Sospechosas","Anomalías","Autorizadas","Rechazadas","% Ok"].map(function(h){
                             return <th key={h} style={Object.assign({},thSt,{paddingBottom:10})}>{h}</th>;
                           })}
                         </tr>
                       </thead>
                       <tbody>
                         {rows.map(function(row){
-                          var pOk = row.total>0?Math.round(row.validas/row.total*100):0;
+                          var pOk = row.total>0?Math.round((row.validas+row.autorizadas)/row.total*100):0;
                           var d = row.dia.split("-");
                           var label = d[2]+"/"+d[1]+"/"+d[0];
                           return (
@@ -1723,6 +1735,7 @@ export default function App() {
                               <td style={Object.assign({},tdSt,{color:T.warning,fontWeight:600})}>{row.sospechosas}</td>
                               <td style={Object.assign({},tdSt,{color:T.danger,fontWeight:600})}>{row.anomalias}</td>
                               <td style={Object.assign({},tdSt,{color:T.purple,fontWeight:600})}>{row.autorizadas}</td>
+                              <td style={Object.assign({},tdSt,{color:"#dc2626",fontWeight:600})}>{row.rechazadas||0}</td>
                               <td style={tdSt}>
                                 <div style={{ display:"flex",alignItems:"center",gap:7 }}>
                                   <div style={{ flex:1,height:4,background:T.bgHover,borderRadius:4,overflow:"hidden",minWidth:50 }}>
@@ -1741,14 +1754,15 @@ export default function App() {
                         {/* Totales */}
                         <tr style={{ borderTop:"1px solid "+T.borderLight,background:T.bgPanel }}>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.textPrimary,fontSize:11})}>TOTAL</td>
-                          <td style={Object.assign({},tdSt,{fontWeight:700,color:T.textPrimary})}>{stT}</td>
+                          <td style={Object.assign({},tdSt,{fontWeight:700,color:T.textPrimary})}>{stT+stR}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.success})}>{stV}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.warning})}>{stS}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.danger})}>{stA}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.purple})}>{stAu}</td>
+                          <td style={Object.assign({},tdSt,{fontWeight:700,color:"#dc2626"})}>{stR}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,
-                            color:stT>0&&Math.round(stV/stT*100)>=90?T.success:T.warning})}>
-                            {stT>0?Math.round(stV/stT*100):0}%
+                            color:(stT+stR)>0&&Math.round((stV+stAu)/(stT+stR)*100)>=90?T.success:T.warning})}>
+                            {(stT+stR)>0?Math.round((stV+stAu)/(stT+stR)*100):0}%
                           </td>
                         </tr>
                       </tbody>
