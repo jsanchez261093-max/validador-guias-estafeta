@@ -1023,13 +1023,16 @@ export default function App() {
       setLoadMsg("⚙️ Validando " + (cd.length + wd.length) + " guías…");
       var cGuias   = cd.map(function(r){return gv(r,"No. de guía");});
       var cGuiaSet = new Set(cGuias);
-      var authSet  = new Set(auths.map(function(a){return a.source+"|"+a.guia;}));
+      var authSet   = new Set(auths.map(function(a){return a.source+"|"+a.guia;}));
+      var rejectSet = new Set(rejects.map(function(a){return a.source+"|"+a.guia;}));
       var cmdRes   = cd.map(function(r){return validateCmd(r,cGuias,nO,nD,nU,nC,orRules,dtRules);});
       var wsRaw    = wd.map(function(r){return validateWS(r,cGuiaSet,wsConf);});
       var disc     = wsRaw.filter(function(r){return r===null;}).length;
       var wsRes    = wsRaw.filter(function(r){return r!==null;});
       var all = cmdRes.concat(wsRes).map(function(r){
-        return authSet.has(r.source+"|"+r.guia)?Object.assign({},r,{status:"autorizada"}):r;
+        if (authSet.has(r.source+"|"+r.guia))   return Object.assign({},r,{status:"autorizada"});
+        if (rejectSet.has(r.source+"|"+r.guia)) return Object.assign({},r,{status:"rechazada"});
+        return r;
       });
       setResults(all);
 
