@@ -130,7 +130,8 @@ var SC = {
   valida:     { l:"Válida",     c:T.success,  bg:T.successBg,  bc:T.successBd,  ic:"✓" },
   sospechosa: { l:"Sospechosa", c:T.warning,  bg:T.warningBg,  bc:T.warningBd,  ic:"⚠" },
   anomalia:   { l:"Anomalía",   c:T.danger,   bg:T.dangerBg,   bc:T.dangerBd,   ic:"✕" },
-  autorizada: { l:"Autorizada", c:T.purple,   bg:T.purpleBg,   bc:T.purpleBd,   ic:"●" }
+  autorizada: { l:"Autorizada", c:T.purple,   bg:T.purpleBg,   bc:T.purpleBd,   ic:"●" },
+  rechazada:  { l:"Rechazada",  c:"#dc2626",  bg:"rgba(220,38,38,0.12)", bc:"rgba(220,38,38,0.35)", ic:"✕" }
 };
 var CC  = { "OK":T.success,"Medio":T.warning,"Alto":T.danger,"Crítico":"#dc2626" };
 var CBG = { "OK":T.successBg,"Medio":T.warningBg,"Alto":T.dangerBg,"Crítico":T.dangerBg };
@@ -223,7 +224,8 @@ var SC = {
   valida:     { l:"Válida",     c:T.success,  bg:T.successBg,  bc:T.successBd,  ic:"✓" },
   sospechosa: { l:"Sospechosa", c:T.warning,  bg:T.warningBg,  bc:T.warningBd,  ic:"⚠" },
   anomalia:   { l:"Anomalía",   c:T.danger,   bg:T.dangerBg,   bc:T.dangerBd,   ic:"✕" },
-  autorizada: { l:"Autorizada", c:T.purple,   bg:T.purpleBg,   bc:T.purpleBd,   ic:"●" }
+  autorizada: { l:"Autorizada", c:T.purple,   bg:T.purpleBg,   bc:T.purpleBd,   ic:"●" },
+  rechazada:  { l:"Rechazada",  c:"#dc2626",  bg:"rgba(220,38,38,0.12)", bc:"rgba(220,38,38,0.35)", ic:"✕" }
 };
 var CC  = { "OK":T.success,"Medio":T.warning,"Alto":T.danger,"Crítico":"#dc2626" };
 var CBG = { "OK":T.successBg,"Medio":T.warningBg,"Alto":T.dangerBg,"Crítico":T.dangerBg };
@@ -1097,7 +1099,7 @@ export default function App() {
         + "&rejection=" + encodeURIComponent(JSON.stringify(rejection));
       var r = await jsonp(url);
       if (r.error) throw new Error(r.error);
-      setResults(function(prev){return prev.filter(function(x){return !(x.guia===mmod.guia&&x.source===mmod.source);});});
+      setResults(function(prev){return prev.map(function(x){return(x.guia===mmod.guia&&x.source===mmod.source)?Object.assign({},x,{status:"rechazada"}):x;});});
       setMmod(null); setRForm({name:"",reason:""}); setMotRechManual(""); setRLoading(false);
       fetchRejections(estId).then(function(d){ setRejects(d); }).catch(function(){});
       // Recargar motivos para que el nuevo aparezca en futuros dropdowns
@@ -1873,6 +1875,7 @@ export default function App() {
                 <option value="sospechosa">⚠ Sospechosas</option>
                 <option value="anomalia">✕ Anomalías</option>
                 <option value="autorizada">● Autorizadas</option>
+                <option value="rechazada">✕ Rechazadas</option>
               </select>
               {/* Filtro fuente */}
               <select value={flt.src} style={selSt} onChange={function(e){setFlt(function(p){return Object.assign({},p,{src:e.target.value});});}}>
