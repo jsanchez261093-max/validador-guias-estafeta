@@ -560,6 +560,52 @@ function Empty(props) {
   );
 }
 
+// Extrae clave de día "YYYY-MM-DD" desde ISO o DD/MM/YYYY (las fechas de auths/rechazos son ISO)
+function dayKeyAny(str) {
+  if (!str) return null;
+  str = String(str).trim();
+  var iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[1] + "-" + iso[2] + "-" + iso[3];
+  var dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmy) return dmy[3] + "-" + dmy[2].padStart(2,"0") + "-" + dmy[1].padStart(2,"0");
+  return null;
+}
+function dayKeyToLabel(k) { if(!k) return ""; var d=k.split("-"); return d[2]+"/"+d[1]+"/"+d[0]; }
+
+// Panel de detalle de una guía (campos del registro crudo). row puede ser undefined.
+function GuiaDetalle(props) {
+  var row = props.row;
+  if (!row) return (
+    <div style={{ background:T.bgSurface, border:"1px solid "+T.borderFaint, borderRadius:T.r8, padding:14,
+      fontSize:11, color:T.textMuted }}>
+      Detalle completo no disponible: la guía no está en el período cargado actualmente. Carga el período correspondiente en Inicio para ver el desglose.
+    </div>
+  );
+  var campos = [
+    ["Fecha gen./recol.", gv(row,"Fecha de generación")||gv(row,"fecha recolección")||gv(row,"Fecha de recolección")],
+    ["Centro de costo", gv(row,"Centro de costo")],
+    ["Razón Social Origen", gv(row,"Razón Social Origen")],
+    ["Alias Dirección Origen", gv(row,"Alias Dirección Origen")],
+    ["Razón Social Destino", gv(row,"Razón Social Destino")],
+    ["Alias Dirección Destino", gv(row,"Alias Dirección Destino")],
+    ["Contenido", gv(row,"Contenido")],
+    ["Usuario", gv(row,"Usuario que le generó")]
+  ];
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:12,
+      background:T.bgSurface, border:"1px solid "+T.borderFaint, borderRadius:T.r8, padding:14 }}>
+      {campos.map(function(pair,j){
+        return (
+          <div key={j} style={{ minWidth:0 }}>
+            <div style={{ fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:3 }}>{pair[0]}</div>
+            <div style={{ fontSize:12,color:T.textPrimary,fontWeight:500,wordBreak:"break-word" }}>{pair[1]||"—"}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SBadge(props) {
   var sc = SC[props.s] || SC.valida;
   return (
@@ -780,8 +826,11 @@ export default function App() {
   var eUSt   = useState(new Set()); var estUsers=eUSt[0],setEstUsers=eUSt[1];
   var authsSt= useState([]); var auths=authsSt[0],setAuths=authsSt[1];
   var histSt = useState([]); var hist=histSt[0],setHist=histSt[1];
-  var fltSt  = useState({s:"todos",src:"todos",q:"",f:"todos"}); var flt=fltSt[0],setFlt=fltSt[1];
+  var fltSt  = useState({s:"todos",src:"todos",q:"",f:"todos",to_origen:"todos",to_destino:"todos"}); var flt=fltSt[0],setFlt=fltSt[1];
   var expSt  = useState(null); var expRow=expSt[0],setExpRow=expSt[1];
+  var aFltSt = useState({src:"todos",f:"todos",q:""}); var aFlt=aFltSt[0],setAFlt=aFltSt[1];
+  var rFltSt = useState({src:"todos",f:"todos",q:""}); var rFlt=rFltSt[0],setRFlt=rFltSt[1];
+  var dashFiltSt = useState({mode:"todos",val:"",from:"",to:""}); var dashFilt=dashFiltSt[0],setDashFilt=dashFiltSt[1];
   var modalSt= useState(null); var modal=modalSt[0],setModal=modalSt[1];
   var mmodSt  = useState(null); var mmod=mmodSt[0],setMmod=mmodSt[1];
   var rFormSt = useState({name:"",reason:""}); var rForm=rFormSt[0],setRForm=rFormSt[1];
@@ -1046,6 +1095,8 @@ export default function App() {
       else if (queryMode === "mes")    setDashPeriod("semana");
       else if (dates.length > 1)       setDashPeriod("dia");
       else                             setDashPeriod("dia");
+      // Resetear filtro de rango del Dashboard al cargar datos nuevos
+      setDashFilt({mode:"todos",val:"",from:"",to:""});
 
       var modeLabels = { dia:"Día", rango:"Rango", mes:"Mes", anio:"Año" };
       var periodoLabel = queryMode === "dia"
@@ -1200,38 +1251,78 @@ export default function App() {
   }
 
   // Derived data
-  var stT=results.length, stV=results.filter(function(r){return r.status==="valida";}).length;
-  var stS=results.filter(function(r){return r.status==="sospechosa";}).length;
-  var stA=results.filter(function(r){return r.status==="anomalia";}).length;
-  var stAu=results.filter(function(r){return r.status==="autorizada";}).length;
-  var stR=results.filter(function(r){return r.status==="rechazada";}).length;
+  // ── Filtro de rango de fecha del Dashboard (client-side, NO re-consulta Sheets) ──
+  var dashResults = results.filter(function(r){
+    if (!dashFilt || dashFilt.mode==="todos") return true;
+    var k = fechaToKey(r.fecha,"dia"); if(!k) return false;
+    if (dashFilt.mode==="dia")    return k===dashFilt.val;
+    if (dashFilt.mode==="rango")  return (!dashFilt.from||k>=dashFilt.from)&&(!dashFilt.to||k<=dashFilt.to);
+    if (dashFilt.mode==="semana") return fechaToKey(r.fecha,"semana")===dashFilt.val;
+    if (dashFilt.mode==="mes")    return fechaToKey(r.fecha,"mes")===dashFilt.val;
+    if (dashFilt.mode==="anio")   return fechaToKey(r.fecha,"anio")===dashFilt.val;
+    return true;
+  });
+  var stT=dashResults.length, stV=dashResults.filter(function(r){return r.status==="valida";}).length;
+  var stS=dashResults.filter(function(r){return r.status==="sospechosa";}).length;
+  var stA=dashResults.filter(function(r){return r.status==="anomalia";}).length;
+  var stAu=dashResults.filter(function(r){return r.status==="autorizada";}).length;
+  var stR=dashResults.filter(function(r){return r.status==="rechazada";}).length;
+  // Listas para filtros del Dashboard (distintos valores presentes en results)
+  var dDias    = Array.from(new Set(results.map(function(r){return fechaToKey(r.fecha,"dia");}).filter(Boolean))).sort();
+  var dSemanas = Array.from(new Set(results.map(function(r){return fechaToKey(r.fecha,"semana");}).filter(Boolean))).sort();
+  var dMeses   = Array.from(new Set(results.map(function(r){return fechaToKey(r.fecha,"mes");}).filter(Boolean))).sort();
+  var dAnios   = Array.from(new Set(results.map(function(r){return fechaToKey(r.fecha,"anio");}).filter(Boolean))).sort();
+  // Mapa de cruce guía → result (para detalle desplegable en Autorizaciones/Rechazadas)
+  var resByGuia = {};
+  results.forEach(function(r){ var g=String(r.guia).trim(); if(g&&!resByGuia[g]) resByGuia[g]=r; });
+  // ── Resultados: filtros (estatus, fuente, fecha, tipo origen, tipo destino, búsqueda) ──
   var fechasDisp = Array.from(new Set(results.map(function(r){return fechaToKey(r.fecha,"dia");}).filter(Boolean))).sort();
+  var origenesDisp = Array.from(new Set(results.map(function(r){return r.tipoOrigen;}).filter(function(v){return v&&v!=="—";}))).sort();
+  var destinosDisp = Array.from(new Set(results.map(function(r){return r.tipoDestino;}).filter(function(v){return v&&v!=="—";}))).sort();
   var fltd = results.filter(function(r) {
     var q=flt.q.toLowerCase();
     return (flt.s==="todos"||r.status===flt.s)&&(flt.src==="todos"||r.source===flt.src)
       &&(flt.f==="todos"||fechaToKey(r.fecha,"dia")===flt.f)
+      &&(flt.to_origen==="todos"||r.tipoOrigen===flt.to_origen)
+      &&(flt.to_destino==="todos"||r.tipoDestino===flt.to_destino)
       &&(!flt.q||(r.guia&&r.guia.includes(flt.q))||(r.usuario&&r.usuario.toLowerCase().includes(q))||(r.razonSocial&&r.razonSocial.toLowerCase().includes(q)));
   });
+  // ── Autorizaciones: filtros (fuente, fecha, búsqueda) ──
+  var authFechas = Array.from(new Set(auths.map(function(a){return dayKeyAny(a.fecha);}).filter(Boolean))).sort();
+  var authsF = auths.filter(function(a){
+    var q=aFlt.q.toLowerCase();
+    return (aFlt.src==="todos"||a.source===aFlt.src)
+      &&(aFlt.f==="todos"||dayKeyAny(a.fecha)===aFlt.f)
+      &&(!aFlt.q||(a.guia&&String(a.guia).toLowerCase().includes(q))||(a.name&&a.name.toLowerCase().includes(q))||(a.reason&&a.reason.toLowerCase().includes(q)));
+  });
+  // ── Rechazadas: filtros (fuente, fecha, búsqueda) ──
+  var rejFechas = Array.from(new Set(rejects.map(function(r){return dayKeyAny(r.fecha);}).filter(Boolean))).sort();
+  var rejectsF = rejects.filter(function(r){
+    var q=rFlt.q.toLowerCase();
+    return (rFlt.src==="todos"||r.source===rFlt.src)
+      &&(rFlt.f==="todos"||dayKeyAny(r.fecha)===rFlt.f)
+      &&(!rFlt.q||(r.guia&&String(r.guia).toLowerCase().includes(q))||(r.rejectedBy&&r.rejectedBy.toLowerCase().includes(q))||(r.motivo&&r.motivo.toLowerCase().includes(q)));
+  });
   var pieData=[{n:"Válidas",v:stV,f:"#22c55e"},{n:"Sospechosas",v:stS,f:"#f59e0b"},{n:"Anomalías",v:stA,f:"#ef4444"},{n:"Autorizadas",v:stAu,f:"#8b5cf6"},{n:"Rechazadas",v:stR,f:"#dc2626"}].filter(function(d){return d.v>0;});
-  var toMap={};results.forEach(function(r){if(r.tipoOrigen&&r.tipoOrigen!=="—")toMap[r.tipoOrigen]=(toMap[r.tipoOrigen]||0)+1;});
+  var toMap={};dashResults.forEach(function(r){if(r.tipoOrigen&&r.tipoOrigen!=="—")toMap[r.tipoOrigen]=(toMap[r.tipoOrigen]||0)+1;});
   var toCounts=Object.entries(toMap).sort(function(a,b){return b[1]-a[1];}).slice(0,8).map(function(e){return{n:e[0],v:e[1]};});
-  var tdMap={};results.forEach(function(r){if(r.tipoDestino&&r.tipoDestino!=="—")tdMap[r.tipoDestino]=(tdMap[r.tipoDestino]||0)+1;});
+  var tdMap={};dashResults.forEach(function(r){if(r.tipoDestino&&r.tipoDestino!=="—")tdMap[r.tipoDestino]=(tdMap[r.tipoDestino]||0)+1;});
   var tdCounts=Object.entries(tdMap).sort(function(a,b){return b[1]-a[1];}).slice(0,8).map(function(e){return{n:e[0],v:e[1]};});
-  var barData=["Comando","Web Service"].map(function(src){return{name:src==="Comando"?"Comando":"Web Svc",Válidas:results.filter(function(r){return r.source===src&&r.status==="valida";}).length,Sospechosas:results.filter(function(r){return r.source===src&&r.status==="sospechosa";}).length,Anomalías:results.filter(function(r){return r.source===src&&r.status==="anomalia";}).length,Rechazadas:results.filter(function(r){return r.source===src&&r.status==="rechazada";}).length};});
-  var critCards=["OK","Medio","Alto","Crítico"].map(function(c){return{l:c,n:results.filter(function(r){return r.criticidad===c;}).length};}).filter(function(x){return x.n>0;});
+  var barData=["Comando","Web Service"].map(function(src){return{name:src==="Comando"?"Comando":"Web Svc",Válidas:dashResults.filter(function(r){return r.source===src&&r.status==="valida";}).length,Sospechosas:dashResults.filter(function(r){return r.source===src&&r.status==="sospechosa";}).length,Anomalías:dashResults.filter(function(r){return r.source===src&&r.status==="anomalia";}).length,Rechazadas:dashResults.filter(function(r){return r.source===src&&r.status==="rechazada";}).length};});
+  var critCards=["OK","Medio","Alto","Crítico"].map(function(c){return{l:c,n:dashResults.filter(function(r){return r.criticidad===c;}).length};}).filter(function(x){return x.n>0;});
   var cmdDateMap={};
-  results.filter(function(r){return r.source==="Comando";}).forEach(function(r){var d=parseFechaDay(r.fecha);if(d){if(!cmdDateMap[d])cmdDateMap[d]={total:0,validas:0,sospechosas:0,anomalias:0};cmdDateMap[d].total++;if(r.status==="valida")cmdDateMap[d].validas++;if(r.status==="sospechosa")cmdDateMap[d].sospechosas++;if(r.status==="anomalia")cmdDateMap[d].anomalias++;}});
+  dashResults.filter(function(r){return r.source==="Comando";}).forEach(function(r){var d=parseFechaDay(r.fecha);if(d){if(!cmdDateMap[d])cmdDateMap[d]={total:0,validas:0,sospechosas:0,anomalias:0};cmdDateMap[d].total++;if(r.status==="valida")cmdDateMap[d].validas++;if(r.status==="sospechosa")cmdDateMap[d].sospechosas++;if(r.status==="anomalia")cmdDateMap[d].anomalias++;}});
   var cmdDaily=Object.entries(cmdDateMap).sort(function(a,b){return a[0].localeCompare(b[0]);}).map(function(e){return Object.assign({fecha:e[0]},e[1]);});
   var wsDateMap={};
-  results.filter(function(r){return r.source==="Web Service";}).forEach(function(r){var d=parseFechaDay(r.fecha);if(d){if(!wsDateMap[d])wsDateMap[d]={total:0,validas:0,sospechosas:0,anomalias:0};wsDateMap[d].total++;if(r.status==="valida")wsDateMap[d].validas++;if(r.status==="sospechosa")wsDateMap[d].sospechosas++;if(r.status==="anomalia")wsDateMap[d].anomalias++;}});
+  dashResults.filter(function(r){return r.source==="Web Service";}).forEach(function(r){var d=parseFechaDay(r.fecha);if(d){if(!wsDateMap[d])wsDateMap[d]={total:0,validas:0,sospechosas:0,anomalias:0};wsDateMap[d].total++;if(r.status==="valida")wsDateMap[d].validas++;if(r.status==="sospechosa")wsDateMap[d].sospechosas++;if(r.status==="anomalia")wsDateMap[d].anomalias++;}});
   var wsDaily=Object.entries(wsDateMap).sort(function(a,b){return a[0].localeCompare(b[0]);}).map(function(e){return Object.assign({fecha:e[0]},e[1]);});
-  var cmdTipoMap={};results.filter(function(r){return r.source==="Comando"&&r.tipoOrigen;}).forEach(function(r){cmdTipoMap[r.tipoOrigen]=(cmdTipoMap[r.tipoOrigen]||0)+1;});
+  var cmdTipoMap={};dashResults.filter(function(r){return r.source==="Comando"&&r.tipoOrigen;}).forEach(function(r){cmdTipoMap[r.tipoOrigen]=(cmdTipoMap[r.tipoOrigen]||0)+1;});
   var cmdTipo=Object.entries(cmdTipoMap).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{tipo:e[0],n:e[1]};});
-  var wsTipoMap={};results.filter(function(r){return r.source==="Web Service"&&r.tipoOrigen&&r.tipoOrigen!=="—";}).forEach(function(r){wsTipoMap[r.tipoOrigen]=(wsTipoMap[r.tipoOrigen]||0)+1;});
+  var wsTipoMap={};dashResults.filter(function(r){return r.source==="Web Service"&&r.tipoOrigen&&r.tipoOrigen!=="—";}).forEach(function(r){wsTipoMap[r.tipoOrigen]=(wsTipoMap[r.tipoOrigen]||0)+1;});
   var wsTipo=Object.entries(wsTipoMap).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{tipo:e[0],n:e[1]};});
   // Datos de tendencia según granularidad seleccionada en el Dashboard
-  var trendCmd = groupByPeriod(results, "Comando",     dashPeriod);
-  var trendWS  = groupByPeriod(results, "Web Service", dashPeriod);
+  var trendCmd = groupByPeriod(dashResults, "Comando",     dashPeriod);
+  var trendWS  = groupByPeriod(dashResults, "Web Service", dashPeriod);
 
   // ── Render ─────────────────────────────────────────────────
   var TABS = [
@@ -1566,6 +1657,66 @@ export default function App() {
               </button>
             </div>
 
+            {/* ── Filtro de rango del Dashboard (client-side, sin re-consultar Sheets) ── */}
+            <div style={{ background:T.bgSurface, borderRadius:T.r12, border:"1px solid "+T.borderFaint,
+              padding:"12px 16px", marginBottom:16, display:"flex", flexWrap:"wrap", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:11,fontWeight:600,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.06em" }}>Filtrar período</span>
+              <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                {[["todos","Todas"],["dia","Día"],["rango","Entre días"],["semana","Semana"],["mes","Mes"],["anio","Año"]].map(function(m){
+                  var active=dashFilt.mode===m[0];
+                  return (
+                    <button key={m[0]} onClick={function(){
+                      if(m[0]==="todos") setDashFilt({mode:"todos",val:"",from:"",to:""});
+                      else if(m[0]==="dia") setDashFilt({mode:"dia",val:dDias[dDias.length-1]||"",from:"",to:""});
+                      else if(m[0]==="rango") setDashFilt({mode:"rango",val:"",from:dDias[0]||"",to:dDias[dDias.length-1]||""});
+                      else if(m[0]==="semana") setDashFilt({mode:"semana",val:dSemanas[dSemanas.length-1]||"",from:"",to:""});
+                      else if(m[0]==="mes") setDashFilt({mode:"mes",val:dMeses[dMeses.length-1]||"",from:"",to:""});
+                      else if(m[0]==="anio") setDashFilt({mode:"anio",val:dAnios[dAnios.length-1]||"",from:"",to:""});
+                    }}
+                      style={{ padding:"6px 12px", borderRadius:T.r8, border:"1px solid",
+                        borderColor:active?T.accentBlue:T.borderFaint, background:active?T.accentGlow:T.bgPanel,
+                        color:active?T.accentBlueLt:T.textMuted, fontSize:11, fontWeight:active?700:500, cursor:"pointer" }}>
+                      {m[1]}
+                    </button>
+                  );
+                })}
+              </div>
+              {dashFilt.mode==="dia" && (
+                <select value={dashFilt.val} style={selSt} onChange={function(e){var v=e.target.value;setDashFilt(function(p){return Object.assign({},p,{val:v});});}}>
+                  {dDias.map(function(k){return <option key={k} value={k}>{dayKeyToLabel(k)}</option>;})}
+                </select>
+              )}
+              {dashFilt.mode==="rango" && (
+                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                  <select value={dashFilt.from} style={selSt} onChange={function(e){var v=e.target.value;setDashFilt(function(p){return Object.assign({},p,{from:v});});}}>
+                    {dDias.map(function(k){return <option key={k} value={k}>{dayKeyToLabel(k)}</option>;})}
+                  </select>
+                  <span style={{ fontSize:11,color:T.textMuted }}>→</span>
+                  <select value={dashFilt.to} style={selSt} onChange={function(e){var v=e.target.value;setDashFilt(function(p){return Object.assign({},p,{to:v});});}}>
+                    {dDias.map(function(k){return <option key={k} value={k}>{dayKeyToLabel(k)}</option>;})}
+                  </select>
+                </div>
+              )}
+              {dashFilt.mode==="semana" && (
+                <select value={dashFilt.val} style={selSt} onChange={function(e){var v=e.target.value;setDashFilt(function(p){return Object.assign({},p,{val:v});});}}>
+                  {dSemanas.map(function(k){var p=k.split("-S");return <option key={k} value={k}>{"Semana "+p[1]+" · "+p[0]}</option>;})}
+                </select>
+              )}
+              {dashFilt.mode==="mes" && (
+                <select value={dashFilt.val} style={selSt} onChange={function(e){var v=e.target.value;setDashFilt(function(p){return Object.assign({},p,{val:v});});}}>
+                  {dMeses.map(function(k){var p=k.split("-");return <option key={k} value={k}>{p[1]+"/"+p[0]}</option>;})}
+                </select>
+              )}
+              {dashFilt.mode==="anio" && (
+                <select value={dashFilt.val} style={selSt} onChange={function(e){var v=e.target.value;setDashFilt(function(p){return Object.assign({},p,{val:v});});}}>
+                  {dAnios.map(function(k){return <option key={k} value={k}>{k}</option>;})}
+                </select>
+              )}
+              <span style={{ fontSize:11,color:T.textMuted,marginLeft:"auto",whiteSpace:"nowrap" }}>
+                {dashResults.length.toLocaleString()} de {results.length.toLocaleString()} guías
+              </span>
+            </div>
+
             {/* ── KPI Cards ── */}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:16, marginBottom:20 }}>
               <StatCard l="Total" v={stT} i={0} total={stT} accent={T.accentBlue}
@@ -1864,7 +2015,7 @@ export default function App() {
               <div style={{ fontSize:10,color:T.textMuted,marginBottom:14 }}>Desglose diario de todas las guías del período seleccionado</div>
               {(function(){
                 var allDays = {};
-                results.forEach(function(r){
+                dashResults.forEach(function(r){
                   var k = fechaToKey(r.fecha,"dia");
                   if(!k) return;
                   if(!allDays[k]) allDays[k]={dia:k,total:0,validas:0,sospechosas:0,anomalias:0,autorizadas:0,rechazadas:0};
@@ -2070,6 +2221,16 @@ export default function App() {
                   return <option key={fk} value={fk}>{lbl}</option>;
                 })}
               </select>
+              {/* Filtro tipo origen */}
+              <select value={flt.to_origen} style={selSt} onChange={function(e){setFlt(function(p){return Object.assign({},p,{to_origen:e.target.value});});}}>
+                <option value="todos">Todo origen</option>
+                {origenesDisp.map(function(v){ return <option key={v} value={v}>{v}</option>; })}
+              </select>
+              {/* Filtro tipo destino */}
+              <select value={flt.to_destino} style={selSt} onChange={function(e){setFlt(function(p){return Object.assign({},p,{to_destino:e.target.value});});}}>
+                <option value="todos">Todo destino</option>
+                {destinosDisp.map(function(v){ return <option key={v} value={v}>{v}</option>; })}
+              </select>
               {/* Búsqueda */}
               <div style={{ position:"relative",flex:1,minWidth:200 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={T.textMuted} strokeWidth="2"
@@ -2177,24 +2338,7 @@ export default function App() {
                           {open && (
                             <tr key={r.id+"-det"} style={{ background:T.bgPanel }}>
                               <td colSpan={11} style={{ padding:"2px 12px 16px" }}>
-                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:12,
-                                  background:T.bgSurface, border:"1px solid "+T.borderFaint, borderRadius:T.r8, padding:14 }}>
-                                  {[["Fecha gen./recol.", r.fecha],
-                                    ["Centro de costo", gv(r.row,"Centro de costo")],
-                                    ["Razón Social Origen", gv(r.row,"Razón Social Origen")],
-                                    ["Alias Dirección Origen", gv(r.row,"Alias Dirección Origen")],
-                                    ["Razón Social Destino", gv(r.row,"Razón Social Destino")],
-                                    ["Alias Dirección Destino", gv(r.row,"Alias Dirección Destino")],
-                                    ["Contenido", gv(r.row,"Contenido")],
-                                    ["Usuario", gv(r.row,"Usuario que le generó")]].map(function(pair,j){
-                                    return (
-                                      <div key={j} style={{ minWidth:0 }}>
-                                        <div style={{ fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:3 }}>{pair[0]}</div>
-                                        <div style={{ fontSize:12,color:T.textPrimary,fontWeight:500,wordBreak:"break-word" }}>{pair[1]||"—"}</div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                                <GuiaDetalle row={r.row} />
                               </td>
                             </tr>
                           )}
@@ -2236,35 +2380,80 @@ export default function App() {
               )}
             </div>
             {auths.length===0 ? <Empty msg="No hay autorizaciones registradas" sub="Las autorizaciones aparecerán aquí cuando apruebes guías sospechosas o con anomalías" /> : (
-              <div style={{ borderRadius:T.r12,border:"1px solid "+T.borderFaint,overflow:"hidden" }}>
-                <table style={{ width:"100%",borderCollapse:"collapse",fontSize:12 }}>
-                  <thead>
-                    <tr style={{ background:T.bgPanel,borderBottom:"1px solid "+T.borderFaint }}>
-                      {["Guía","Fuente","Original","Criticidad","Problemas","Autorizado por","Motivo","Fecha"].map(function(h,i){
-                        return <th key={i} style={thSt}>{h}</th>;
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {auths.map(function(a,i){
-                      var sc=SC[a.original]||SC.sospechosa;
-                      return (
-                        <tr key={i} className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66",
-                          background:i%2===0?T.bgSurface:T.bgPanel }}>
-                          <td style={{ padding:"10px 12px",fontFamily:"'SF Mono',monospace",fontSize:11,fontWeight:600,color:T.textPrimary }}>{a.guia}</td>
-                          <td style={{ padding:"10px 12px",fontSize:11,color:T.textSec }}>{a.source}</td>
-                          <td style={{ padding:"10px 12px" }}><SBadge s={a.original}/></td>
-                          <td style={{ padding:"10px 12px" }}><CBadge v={a.criticidad}/></td>
-                          <td style={{ padding:"10px 12px",fontSize:10,color:T.danger,maxWidth:160,lineHeight:1.5 }}>{(a.issues||[]).join("; ")||"—"}</td>
-                          <td style={{ padding:"10px 12px",fontWeight:600,fontSize:12,color:T.textPrimary }}>{a.name}</td>
-                          <td style={{ padding:"10px 12px",color:T.textSec,fontSize:11,maxWidth:160 }}>{a.reason}</td>
-                          <td style={{ padding:"10px 12px",fontSize:10,color:T.textMuted,whiteSpace:"nowrap" }}>{a.fecha}</td>
+              <>
+                {/* Toolbar filtros */}
+                <div style={{ display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center" }}>
+                  <select value={aFlt.src} style={selSt} onChange={function(e){setAFlt(function(p){return Object.assign({},p,{src:e.target.value});});}}>
+                    <option value="todos">Todas las fuentes</option>
+                    <option value="Comando">Comando</option>
+                    <option value="Web Service">Web Service</option>
+                  </select>
+                  <select value={aFlt.f} style={selSt} onChange={function(e){setAFlt(function(p){return Object.assign({},p,{f:e.target.value});});}}>
+                    <option value="todos">Todas las fechas</option>
+                    {authFechas.map(function(k){return <option key={k} value={k}>{dayKeyToLabel(k)}</option>;})}
+                  </select>
+                  <div style={{ position:"relative",flex:1,minWidth:200 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={T.textMuted} strokeWidth="2"
+                      style={{ position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none" }}>
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input placeholder="Buscar guía, usuario, motivo…" value={aFlt.q}
+                      style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",paddingLeft:32})}
+                      onChange={function(e){setAFlt(function(p){return Object.assign({},p,{q:e.target.value});});}} />
+                  </div>
+                  <span style={{ fontSize:11,color:T.textMuted,whiteSpace:"nowrap" }}>{authsF.length} / {auths.length}</span>
+                </div>
+                {authsF.length===0 ? <Empty msg="Sin resultados para este filtro" /> : (
+                  <div style={{ borderRadius:T.r12,border:"1px solid "+T.borderFaint,overflow:"hidden" }}>
+                    <div style={{ overflowX:"auto" }}>
+                    <table style={{ width:"100%",borderCollapse:"collapse",fontSize:12 }}>
+                      <thead>
+                        <tr style={{ background:T.bgPanel,borderBottom:"1px solid "+T.borderFaint }}>
+                          {["Guía","Fuente","Original","Criticidad","Problemas","Autorizado por","Motivo","Fecha",""].map(function(h,i){
+                            return <th key={i} style={thSt}>{h}</th>;
+                          })}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody>
+                        {authsF.map(function(a,i){
+                          var aopen=expRow==="auth-"+i;
+                          return (
+                            <Fragment key={"auth-"+i}>
+                            <tr className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66",
+                              background:aopen?T.accentGlow:(i%2===0?T.bgSurface:T.bgPanel) }}>
+                              <td style={{ padding:"10px 12px",fontFamily:"'SF Mono',monospace",fontSize:11,fontWeight:600,color:T.textPrimary }}>{a.guia}</td>
+                              <td style={{ padding:"10px 12px",fontSize:11,color:T.textSec }}>{a.source}</td>
+                              <td style={{ padding:"10px 12px" }}><SBadge s={a.original}/></td>
+                              <td style={{ padding:"10px 12px" }}><CBadge v={a.criticidad}/></td>
+                              <td style={{ padding:"10px 12px",fontSize:10,color:T.danger,maxWidth:160,lineHeight:1.5 }}>{(a.issues||[]).join("; ")||"—"}</td>
+                              <td style={{ padding:"10px 12px",fontWeight:600,fontSize:12,color:T.textPrimary }}>{a.name}</td>
+                              <td style={{ padding:"10px 12px",color:T.textSec,fontSize:11,maxWidth:160 }}>{a.reason}</td>
+                              <td style={{ padding:"10px 12px",fontSize:10,color:T.textMuted,whiteSpace:"nowrap" }}>{a.fecha}</td>
+                              <td style={{ padding:"10px 12px" }}>
+                                <button onClick={function(){setExpRow(aopen?null:"auth-"+i);}}
+                                  style={{ padding:"4px 10px",background:aopen?T.accentBlue:"transparent",
+                                    color:aopen?"white":T.textSec,border:"1px solid "+(aopen?T.accentBlue:T.borderLight),
+                                    borderRadius:T.r6,fontSize:10,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap" }}>
+                                  {aopen?"▾ Detalle":"▸ Detalle"}
+                                </button>
+                              </td>
+                            </tr>
+                            {aopen && (
+                              <tr style={{ background:T.bgPanel }}>
+                                <td colSpan={9} style={{ padding:"2px 12px 16px" }}>
+                                  <GuiaDetalle row={(resByGuia[String(a.guia).trim()]||{}).row} />
+                                </td>
+                              </tr>
+                            )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             <div style={{ marginTop:14,padding:14,background:T.successBg,borderRadius:T.r8,
               border:"1px solid "+T.successBd,fontSize:11,color:T.success,display:"flex",gap:8,alignItems:"center" }}>
@@ -2347,34 +2536,80 @@ export default function App() {
               )}
             </div>
             {rejects.length===0 ? <Empty msg="No hay rechazos registrados" sub="Las guías rechazadas aparecerán aquí cuando uses el botón Rechazar" /> : (
-              <div style={{ borderRadius:T.r12,border:"1px solid "+T.borderFaint,overflow:"hidden" }}>
-                <table style={{ width:"100%",borderCollapse:"collapse",fontSize:12 }}>
-                  <thead>
-                    <tr style={{ background:T.bgPanel,borderBottom:"1px solid "+T.borderFaint }}>
-                      {["Guía","Fuente","Estatus","Criticidad","Problemas","Rechazado por","Motivo","Fecha"].map(function(h,i){
-                        return <th key={i} style={thSt}>{h}</th>;
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rejects.map(function(r,i){
-                      return (
-                        <tr key={i} className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66",
-                          background:i%2===0?T.bgSurface:T.bgPanel }}>
-                          <td style={{ padding:"10px 12px",fontFamily:"'SF Mono',monospace",fontSize:11,fontWeight:600,color:T.textPrimary }}>{r.guia}</td>
-                          <td style={{ padding:"10px 12px",fontSize:11,color:T.textSec }}>{r.source}</td>
-                          <td style={{ padding:"10px 12px" }}><SBadge s={r.original}/></td>
-                          <td style={{ padding:"10px 12px" }}><CBadge v={r.criticidad}/></td>
-                          <td style={{ padding:"10px 12px",fontSize:10,color:T.danger,maxWidth:160,lineHeight:1.5 }}>{r.problemas||"—"}</td>
-                          <td style={{ padding:"10px 12px",fontWeight:600,fontSize:12,color:T.textPrimary }}>{r.rejectedBy}</td>
-                          <td style={{ padding:"10px 12px",color:T.textSec,fontSize:11,maxWidth:160 }}>{r.motivo}</td>
-                          <td style={{ padding:"10px 12px",fontSize:10,color:T.textMuted,whiteSpace:"nowrap" }}>{r.fecha}</td>
+              <>
+                {/* Toolbar filtros */}
+                <div style={{ display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center" }}>
+                  <select value={rFlt.src} style={selSt} onChange={function(e){setRFlt(function(p){return Object.assign({},p,{src:e.target.value});});}}>
+                    <option value="todos">Todas las fuentes</option>
+                    <option value="Comando">Comando</option>
+                    <option value="Web Service">Web Service</option>
+                  </select>
+                  <select value={rFlt.f} style={selSt} onChange={function(e){setRFlt(function(p){return Object.assign({},p,{f:e.target.value});});}}>
+                    <option value="todos">Todas las fechas</option>
+                    {rejFechas.map(function(k){return <option key={k} value={k}>{dayKeyToLabel(k)}</option>;})}
+                  </select>
+                  <div style={{ position:"relative",flex:1,minWidth:200 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={T.textMuted} strokeWidth="2"
+                      style={{ position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none" }}>
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input placeholder="Buscar guía, usuario, motivo…" value={rFlt.q}
+                      style={Object.assign({},selSt,{width:"100%",boxSizing:"border-box",paddingLeft:32})}
+                      onChange={function(e){setRFlt(function(p){return Object.assign({},p,{q:e.target.value});});}} />
+                  </div>
+                  <span style={{ fontSize:11,color:T.textMuted,whiteSpace:"nowrap" }}>{rejectsF.length} / {rejects.length}</span>
+                </div>
+                {rejectsF.length===0 ? <Empty msg="Sin resultados para este filtro" /> : (
+                  <div style={{ borderRadius:T.r12,border:"1px solid "+T.borderFaint,overflow:"hidden" }}>
+                    <div style={{ overflowX:"auto" }}>
+                    <table style={{ width:"100%",borderCollapse:"collapse",fontSize:12 }}>
+                      <thead>
+                        <tr style={{ background:T.bgPanel,borderBottom:"1px solid "+T.borderFaint }}>
+                          {["Guía","Fuente","Estatus","Criticidad","Problemas","Rechazado por","Motivo","Fecha",""].map(function(h,i){
+                            return <th key={i} style={thSt}>{h}</th>;
+                          })}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody>
+                        {rejectsF.map(function(r,i){
+                          var ropen=expRow==="rej-"+i;
+                          return (
+                            <Fragment key={"rej-"+i}>
+                            <tr className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66",
+                              background:ropen?T.accentGlow:(i%2===0?T.bgSurface:T.bgPanel) }}>
+                              <td style={{ padding:"10px 12px",fontFamily:"'SF Mono',monospace",fontSize:11,fontWeight:600,color:T.textPrimary }}>{r.guia}</td>
+                              <td style={{ padding:"10px 12px",fontSize:11,color:T.textSec }}>{r.source}</td>
+                              <td style={{ padding:"10px 12px" }}><SBadge s={r.original}/></td>
+                              <td style={{ padding:"10px 12px" }}><CBadge v={r.criticidad}/></td>
+                              <td style={{ padding:"10px 12px",fontSize:10,color:T.danger,maxWidth:160,lineHeight:1.5 }}>{r.problemas||"—"}</td>
+                              <td style={{ padding:"10px 12px",fontWeight:600,fontSize:12,color:T.textPrimary }}>{r.rejectedBy}</td>
+                              <td style={{ padding:"10px 12px",color:T.textSec,fontSize:11,maxWidth:160 }}>{r.motivo}</td>
+                              <td style={{ padding:"10px 12px",fontSize:10,color:T.textMuted,whiteSpace:"nowrap" }}>{r.fecha}</td>
+                              <td style={{ padding:"10px 12px" }}>
+                                <button onClick={function(){setExpRow(ropen?null:"rej-"+i);}}
+                                  style={{ padding:"4px 10px",background:ropen?T.accentBlue:"transparent",
+                                    color:ropen?"white":T.textSec,border:"1px solid "+(ropen?T.accentBlue:T.borderLight),
+                                    borderRadius:T.r6,fontSize:10,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap" }}>
+                                  {ropen?"▾ Detalle":"▸ Detalle"}
+                                </button>
+                              </td>
+                            </tr>
+                            {ropen && (
+                              <tr style={{ background:T.bgPanel }}>
+                                <td colSpan={9} style={{ padding:"2px 12px 16px" }}>
+                                  <GuiaDetalle row={(resByGuia[String(r.guia).trim()]||{}).row} />
+                                </td>
+                              </tr>
+                            )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             <div style={{ marginTop:14,padding:14,background:T.dangerBg,borderRadius:T.r8,
               border:"1px solid "+T.dangerBd,fontSize:11,color:T.danger,display:"flex",gap:8,alignItems:"center" }}>
