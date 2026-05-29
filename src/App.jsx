@@ -1025,19 +1025,16 @@ export default function App() {
       var cGuias   = cd.map(function(r){return gv(r,"No. de guía");});
       var cGuiaSet = new Set(cGuias);
       var authSet   = new Set(auths.map(function(a){return a.source+"|"+a.guia;}));
-      // Filtrar rechazadas por el rango de fechas seleccionado
-      var rejectsFltd = rejects.filter(function(r){
-        var fk = fechaToKey(r.fecha,"dia");
-        return fk && fk >= rangoIni && fk <= rangoFin;
-      });
-      var rejectSet = new Set(rejectsFltd.map(function(a){return a.source+"|"+a.guia;}));
+      // Rechazos: matchear por GUÍA (único global). NO filtrar por fecha aquí —
+      // results ya viene filtrado por período, igual que con auths.
+      var rejectGuiaSet = new Set(rejects.map(function(a){return String(a.guia).trim();}));
       var cmdRes   = cd.map(function(r){return validateCmd(r,cGuias,nO,nD,nU,nC,orRules,dtRules);});
       var wsRaw    = wd.map(function(r){return validateWS(r,cGuiaSet,wsConf);});
       var disc     = wsRaw.filter(function(r){return r===null;}).length;
       var wsRes    = wsRaw.filter(function(r){return r!==null;});
       var all = cmdRes.concat(wsRes).map(function(r){
-        if (authSet.has(r.source+"|"+r.guia))   return Object.assign({},r,{status:"autorizada"});
-        if (rejectSet.has(r.source+"|"+r.guia)) return Object.assign({},r,{status:"rechazada"});
+        if (rejectGuiaSet.has(String(r.guia).trim())) return Object.assign({},r,{status:"rechazada"});
+        if (authSet.has(r.source+"|"+r.guia))         return Object.assign({},r,{status:"autorizada"});
         return r;
       });
       setResults(all);
@@ -1205,7 +1202,7 @@ export default function App() {
   var stS=results.filter(function(r){return r.status==="sospechosa";}).length;
   var stA=results.filter(function(r){return r.status==="anomalia";}).length;
   var stAu=results.filter(function(r){return r.status==="autorizada";}).length;
-  var stR=rejects.length;
+  var stR=results.filter(function(r){return r.status==="rechazada";}).length;
   var fltd = results.filter(function(r) {
     var q=flt.q.toLowerCase();
     return (flt.s==="todos"||r.status===flt.s)&&(flt.src==="todos"||r.source===flt.src)
@@ -1214,7 +1211,7 @@ export default function App() {
   var pieData=[{n:"Válidas",v:stV,f:"#22c55e"},{n:"Sospechosas",v:stS,f:"#f59e0b"},{n:"Anomalías",v:stA,f:"#ef4444"},{n:"Autorizadas",v:stAu,f:"#8b5cf6"},{n:"Rechazadas",v:stR,f:"#dc2626"}].filter(function(d){return d.v>0;});
   var toMap={};results.forEach(function(r){if(r.tipoOrigen&&r.tipoOrigen!=="—")toMap[r.tipoOrigen]=(toMap[r.tipoOrigen]||0)+1;});
   var toCounts=Object.entries(toMap).sort(function(a,b){return b[1]-a[1];}).slice(0,8).map(function(e){return{n:e[0],v:e[1]};});
-  var barData=["Comando","Web Service"].map(function(src){return{name:src==="Comando"?"Comando":"Web Svc",Válidas:results.filter(function(r){return r.source===src&&r.status==="valida";}).length,Sospechosas:results.filter(function(r){return r.source===src&&r.status==="sospechosa";}).length,Anomalías:results.filter(function(r){return r.source===src&&r.status==="anomalia";}).length,Rechazadas:rejects.filter(function(r){return r.source===src;}).length};});
+  var barData=["Comando","Web Service"].map(function(src){return{name:src==="Comando"?"Comando":"Web Svc",Válidas:results.filter(function(r){return r.source===src&&r.status==="valida";}).length,Sospechosas:results.filter(function(r){return r.source===src&&r.status==="sospechosa";}).length,Anomalías:results.filter(function(r){return r.source===src&&r.status==="anomalia";}).length,Rechazadas:results.filter(function(r){return r.source===src&&r.status==="rechazada";}).length};});
   var critCards=["OK","Medio","Alto","Crítico"].map(function(c){return{l:c,n:results.filter(function(r){return r.criticidad===c;}).length};}).filter(function(x){return x.n>0;});
   var cmdDateMap={};
   results.filter(function(r){return r.source==="Comando";}).forEach(function(r){var d=parseFechaDay(r.fecha);if(d){if(!cmdDateMap[d])cmdDateMap[d]={total:0,validas:0,sospechosas:0,anomalias:0};cmdDateMap[d].total++;if(r.status==="valida")cmdDateMap[d].validas++;if(r.status==="sospechosa")cmdDateMap[d].sospechosas++;if(r.status==="anomalia")cmdDateMap[d].anomalias++;}});
@@ -1579,69 +1576,155 @@ export default function App() {
                 icon={<><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></>}/>
             </div>
 
-            {/* ── Row 1: Pie + Bar fuente + Tipo Origen ── */}
+            {/* ── Row 1: Pie + Bar fuente + Tipo Origen (con tablas) ── */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1.4fr", gap:14, marginBottom:14 }}>
-              {/* Donut estatus */}
-              <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,padding:18,
-                border:"1px solid "+T.borderFaint }}>
-                <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:14 }}>Distribución de estatus</div>
-                <ResponsiveContainer width="100%" height={150}>
-                  <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={42} outerRadius={64}
-                      dataKey="v" nameKey="n" strokeWidth={0}>
-                      {pieData.map(function(e,i){return <Cell key={i} fill={e.f}/>;}) }
-                    </Pie>
-                    <Tooltip contentStyle={{ background:T.bgPanel,border:"1px solid "+T.borderLight,
-                      borderRadius:T.r8,fontSize:12,color:T.textPrimary }} itemStyle={{ color:T.textSec }}/>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={{ display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginTop:12 }}>
-                  {pieData.map(function(e,i){
-                    return (
-                      <div key={i} style={{ display:"flex",gap:6,alignItems:"center",fontSize:11,
-                        padding:"6px 10px",background:T.bgPanel,borderRadius:T.r6,border:"1px solid "+T.borderFaint }}>
-                        <div style={{ width:10,height:10,borderRadius:3,background:e.f,boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }}/>
-                        <span style={{ color:T.textSec,fontWeight:500 }}>{e.n}</span>
-                        <span style={{ color:T.textPrimary,fontWeight:700,marginLeft:4 }}>{e.v}</span>
-                      </div>
-                    );
-                  })}
+
+              {/* Donut estatus + tabla */}
+              <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
+                border:"1px solid "+T.borderFaint, overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.12)" }}>
+                <div style={{ height:3, background:"linear-gradient(90deg,#22d65e,#8b5cf6,#dc2626)" }}/>
+                <div style={{ padding:18 }}>
+                  <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:14,
+                    display:"flex",alignItems:"center",gap:8 }}>
+                    <span style={{ width:6,height:6,borderRadius:"50%",background:T.accentBlue }}/>
+                    Distribución de estatus
+                  </div>
+                  <ResponsiveContainer width="100%" height={150}>
+                    <PieChart>
+                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={42} outerRadius={64}
+                        dataKey="v" nameKey="n" strokeWidth={2} stroke={T.bgSurface}
+                        animationDuration={600} animationEasing="ease-out">
+                        {pieData.map(function(e,i){return <Cell key={i} fill={e.f}/>;}) }
+                      </Pie>
+                      <Tooltip contentStyle={{ background:T.bgPanel,border:"1px solid "+T.borderLight,
+                        borderRadius:T.r8,fontSize:12,color:T.textPrimary }} itemStyle={{ color:T.textSec }}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Tabla de datos */}
+                  <table style={{ width:"100%",borderCollapse:"collapse",fontSize:11,marginTop:12 }}>
+                    <thead>
+                      <tr style={{ borderBottom:"1px solid "+T.borderFaint }}>
+                        <th style={{ textAlign:"left",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>Estatus</th>
+                        <th style={{ textAlign:"right",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>Cant.</th>
+                        <th style={{ textAlign:"right",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pieData.map(function(e,i){
+                        var pct = stT>0?Math.round(e.v/stT*100):0;
+                        return (
+                          <tr key={i} className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66" }}>
+                            <td style={{ padding:"6px 4px",color:T.textSec }}>
+                              <span style={{ display:"inline-flex",alignItems:"center",gap:6 }}>
+                                <span style={{ width:8,height:8,borderRadius:2,background:e.f,display:"inline-block" }}/>
+                                {e.n}
+                              </span>
+                            </td>
+                            <td style={{ padding:"6px 4px",textAlign:"right",color:T.textPrimary,fontWeight:700,fontVariantNumeric:"tabular-nums" }}>{e.v.toLocaleString()}</td>
+                            <td style={{ padding:"6px 4px",textAlign:"right",color:e.f,fontWeight:600,fontVariantNumeric:"tabular-nums" }}>{pct}%</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              {/* Barras por fuente */}
-              <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,padding:18,
-                border:"1px solid "+T.borderFaint }}>
-                <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:14 }}>Por fuente</div>
-                <ResponsiveContainer width="100%" height={160}>
-                  <BarChart data={barData} barGap={8} margin={{top:8,right:16,left:0,bottom:8}}>
-                    <XAxis dataKey="name" tick={{fontSize:11,fill:T.textSec,fontWeight:500}} axisLine={false} tickLine={false}/>
-                    <YAxis tick={{fontSize:9,fill:T.textMuted}} axisLine={false} tickLine={false}/>
-                    <Tooltip contentStyle={{ background:T.bgPanel,border:"1px solid "+T.borderLight,
-                      borderRadius:T.r8,fontSize:12,color:T.textPrimary }} cursor={{fill:"rgba(255,255,255,0.05)"}}/>
-                    <Bar dataKey="Válidas" fill="#22d65e" radius={[4,4,0,0]}/>
-                    <Bar dataKey="Sospechosas" fill="#f59e0b" radius={[4,4,0,0]}/>
-                    <Bar dataKey="Anomalías" fill="#ef4444" radius={[4,4,0,0]}/>
-                    <Bar dataKey="Rechazadas" fill="#dc2626" radius={[4,4,0,0]}/>
-                  </BarChart>
-                </ResponsiveContainer>
+              {/* Barras por fuente + tabla */}
+              <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
+                border:"1px solid "+T.borderFaint, overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.12)" }}>
+                <div style={{ height:3, background:"linear-gradient(90deg,#3b82f6,#2dd4bf)" }}/>
+                <div style={{ padding:18 }}>
+                  <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:14,
+                    display:"flex",alignItems:"center",gap:8 }}>
+                    <span style={{ width:6,height:6,borderRadius:"50%",background:T.chartTeal }}/>
+                    Por fuente
+                  </div>
+                  <ResponsiveContainer width="100%" height={150}>
+                    <BarChart data={barData} barGap={6} margin={{top:8,right:12,left:0,bottom:4}}>
+                      <XAxis dataKey="name" tick={{fontSize:11,fill:T.textSec,fontWeight:500}} axisLine={false} tickLine={false}/>
+                      <YAxis tick={{fontSize:9,fill:T.textMuted}} axisLine={false} tickLine={false} allowDecimals={false}/>
+                      <Tooltip contentStyle={{ background:T.bgPanel,border:"1px solid "+T.borderLight,
+                        borderRadius:T.r8,fontSize:12,color:T.textPrimary }} cursor={{fill:"rgba(255,255,255,0.05)"}}/>
+                      <Bar dataKey="Válidas" fill="#22d65e" radius={[3,3,0,0]} animationDuration={600}/>
+                      <Bar dataKey="Sospechosas" fill="#f59e0b" radius={[3,3,0,0]} animationDuration={600}/>
+                      <Bar dataKey="Anomalías" fill="#ef4444" radius={[3,3,0,0]} animationDuration={600}/>
+                      <Bar dataKey="Rechazadas" fill="#dc2626" radius={[3,3,0,0]} animationDuration={600}/>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  {/* Tabla de datos */}
+                  <table style={{ width:"100%",borderCollapse:"collapse",fontSize:10,marginTop:12 }}>
+                    <thead>
+                      <tr style={{ borderBottom:"1px solid "+T.borderFaint }}>
+                        {["Fuente","Vál","Sosp","Anom","Rech"].map(function(h,hi){
+                          return <th key={h} style={{ textAlign:hi===0?"left":"right",padding:"6px 3px",color:T.textMuted,fontWeight:500,fontSize:9 }}>{h}</th>;
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {barData.map(function(b,i){
+                        return (
+                          <tr key={i} className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66" }}>
+                            <td style={{ padding:"6px 3px",color:T.textSec,fontWeight:500 }}>{b.name}</td>
+                            <td style={{ padding:"6px 3px",textAlign:"right",color:"#22d65e",fontWeight:600,fontVariantNumeric:"tabular-nums" }}>{b["Válidas"]}</td>
+                            <td style={{ padding:"6px 3px",textAlign:"right",color:"#f59e0b",fontWeight:600,fontVariantNumeric:"tabular-nums" }}>{b["Sospechosas"]}</td>
+                            <td style={{ padding:"6px 3px",textAlign:"right",color:"#ef4444",fontWeight:600,fontVariantNumeric:"tabular-nums" }}>{b["Anomalías"]}</td>
+                            <td style={{ padding:"6px 3px",textAlign:"right",color:"#dc2626",fontWeight:600,fontVariantNumeric:"tabular-nums" }}>{b["Rechazadas"]}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              {/* Tipo de Origen */}
-              <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,padding:18,
-                border:"1px solid "+T.borderFaint }}>
-                <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:14 }}>Tipo de Origen</div>
-                {toCounts.length===0
-                  ? <div style={{ textAlign:"center",padding:24,fontSize:11,color:T.textMuted }}>Sin datos</div>
-                  : <ResponsiveContainer width="100%" height={150}>
-                      <BarChart data={toCounts} layout="vertical">
-                        <XAxis type="number" tick={{fontSize:9,fill:T.textMuted}} axisLine={false} tickLine={false}/>
-                        <YAxis type="category" dataKey="n" tick={{fontSize:9,fill:T.textSec}} width={120} axisLine={false} tickLine={false}/>
-                        <Tooltip contentStyle={{ background:T.bgPanel,border:"1px solid "+T.borderLight,
-                          borderRadius:T.r8,fontSize:12,color:T.textPrimary }}/>
-                        <Bar dataKey="v" fill={T.chartBlue} radius={[0,4,4,0]}/>
-                      </BarChart>
-                    </ResponsiveContainer>}
+              {/* Tipo de Origen + tabla */}
+              <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
+                border:"1px solid "+T.borderFaint, overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.12)" }}>
+                <div style={{ height:3, background:"linear-gradient(90deg,#60a5fa,#3b82f6)" }}/>
+                <div style={{ padding:18 }}>
+                  <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:14,
+                    display:"flex",alignItems:"center",gap:8 }}>
+                    <span style={{ width:6,height:6,borderRadius:"50%",background:T.chartBlue }}/>
+                    Tipo de Origen
+                  </div>
+                  {toCounts.length===0
+                    ? <div style={{ textAlign:"center",padding:24,fontSize:11,color:T.textMuted }}>Sin datos</div>
+                    : <ResponsiveContainer width="100%" height={150}>
+                        <BarChart data={toCounts} layout="vertical" margin={{top:0,right:12,left:0,bottom:0}}>
+                          <XAxis type="number" tick={{fontSize:9,fill:T.textMuted}} axisLine={false} tickLine={false} allowDecimals={false}/>
+                          <YAxis type="category" dataKey="n" tick={{fontSize:9,fill:T.textSec}} width={120} axisLine={false} tickLine={false}/>
+                          <Tooltip contentStyle={{ background:T.bgPanel,border:"1px solid "+T.borderLight,
+                            borderRadius:T.r8,fontSize:12,color:T.textPrimary }} cursor={{fill:"rgba(255,255,255,0.05)"}}/>
+                          <Bar dataKey="v" fill={T.chartBlue} radius={[0,4,4,0]} animationDuration={600}/>
+                        </BarChart>
+                      </ResponsiveContainer>}
+                  {/* Tabla de datos */}
+                  {toCounts.length>0 && (
+                    <table style={{ width:"100%",borderCollapse:"collapse",fontSize:11,marginTop:12 }}>
+                      <thead>
+                        <tr style={{ borderBottom:"1px solid "+T.borderFaint }}>
+                          <th style={{ textAlign:"left",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>Tipo de Origen</th>
+                          <th style={{ textAlign:"right",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>Cant.</th>
+                          <th style={{ textAlign:"right",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {toCounts.map(function(e,i){
+                          var totalTo = toCounts.reduce(function(s,x){return s+x.v;},0);
+                          var pct = totalTo>0?Math.round(e.v/totalTo*100):0;
+                          return (
+                            <tr key={i} className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66" }}>
+                              <td style={{ padding:"6px 4px",color:T.textSec,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }} title={e.n}>{e.n}</td>
+                              <td style={{ padding:"6px 4px",textAlign:"right",color:T.textPrimary,fontWeight:700,fontVariantNumeric:"tabular-nums" }}>{e.v.toLocaleString()}</td>
+                              <td style={{ padding:"6px 4px",textAlign:"right",color:T.chartBlue,fontWeight:600,fontVariantNumeric:"tabular-nums" }}>{pct}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1730,18 +1813,6 @@ export default function App() {
                   if(r.status==="autorizada")  allDays[k].autorizadas++;
                   if(r.status==="rechazada")   allDays[k].rechazadas++;
                 });
-                // Sumar rechazadas adicionales del Sheet si no están en results
-                // (rechazadas de períodos anteriores que no se validaron de nuevo)
-                rejects.forEach(function(r){
-                  var k = fechaToKey(r.fecha,"dia");
-                  if(!k) return;
-                  // Solo contar si no fue marcada como rechazada en results (evitar duplicados)
-                  var found = results.some(function(x){ return x.source===r.source && x.guia===r.guia; });
-                  if(found) return; // ya está contada arriba
-                  if(!allDays[k]) allDays[k]={dia:k,total:0,validas:0,sospechosas:0,anomalias:0,autorizadas:0,rechazadas:0};
-                  allDays[k].rechazadas++;
-                  allDays[k].total++;
-                });
                 var rows = Object.values(allDays).sort(function(a,b){return a.dia.localeCompare(b.dia);});
                 if(rows.length===0) return <div style={{ textAlign:"center",padding:24,fontSize:11,color:T.textMuted }}>Sin datos de fechas</div>;
                 return (
@@ -1788,15 +1859,15 @@ export default function App() {
                         {/* Totales */}
                         <tr style={{ borderTop:"1px solid "+T.borderLight,background:T.bgPanel }}>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.textPrimary,fontSize:11})}>TOTAL</td>
-                          <td style={Object.assign({},tdSt,{fontWeight:700,color:T.textPrimary})}>{stT+stR}</td>
+                          <td style={Object.assign({},tdSt,{fontWeight:700,color:T.textPrimary})}>{stT}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.success})}>{stV}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.warning})}>{stS}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.danger})}>{stA}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:T.purple})}>{stAu}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,color:"#dc2626"})}>{stR}</td>
                           <td style={Object.assign({},tdSt,{fontWeight:700,
-                            color:(stT+stR)>0&&Math.round((stV+stAu)/(stT+stR)*100)>=90?T.success:T.warning})}>
-                            {(stT+stR)>0?Math.round((stV+stAu)/(stT+stR)*100):0}%
+                            color:stT>0&&Math.round((stV+stAu)/stT*100)>=90?T.success:T.warning})}>
+                            {stT>0?Math.round((stV+stAu)/stT*100):0}%
                           </td>
                         </tr>
                       </tbody>
@@ -1812,21 +1883,52 @@ export default function App() {
                 ["Tipo de operación (WS)", wsTipo, T.chartTeal, T.chartTeal, "TR · Ecommerce · Cambio Catálogo · Concentradora"]
                ].map(function(cfg){
                 return (
-                  <div key={cfg[0]} className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,padding:18,
-                    border:"1px solid "+T.borderFaint }}>
-                    <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:3 }}>{cfg[0]}</div>
-                    <div style={{ fontSize:10,color:T.textMuted,marginBottom:14 }}>{cfg[4]}</div>
-                    {cfg[1].length===0
-                      ? <div style={{ textAlign:"center",padding:24,fontSize:11,color:T.textMuted }}>Sin clasificaciones</div>
-                      : <ResponsiveContainer width="100%" height={Math.max(cfg[1].length*32+20,130)}>
-                          <BarChart data={cfg[1]} layout="vertical">
-                            <XAxis type="number" tick={{fontSize:9,fill:T.textMuted}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                            <YAxis type="category" dataKey="tipo" tick={{fontSize:9,fill:T.textSec}} width={148} axisLine={false} tickLine={false}/>
-                            <Tooltip contentStyle={{ background:T.bgPanel,border:"1px solid "+T.borderLight,
-                              borderRadius:T.r8,fontSize:11,color:T.textPrimary }}/>
-                            <Bar dataKey="n" name="Guías" fill={cfg[2]} radius={[0,4,4,0]}/>
-                          </BarChart>
-                        </ResponsiveContainer>}
+                  <div key={cfg[0]} className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
+                    border:"1px solid "+T.borderFaint, overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.12)" }}>
+                    <div style={{ height:3, background:cfg[2] }}/>
+                    <div style={{ padding:18 }}>
+                      <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:3,
+                        display:"flex",alignItems:"center",gap:8 }}>
+                        <span style={{ width:6,height:6,borderRadius:"50%",background:cfg[2] }}/>
+                        {cfg[0]}
+                      </div>
+                      <div style={{ fontSize:10,color:T.textMuted,marginBottom:14 }}>{cfg[4]}</div>
+                      {cfg[1].length===0
+                        ? <div style={{ textAlign:"center",padding:24,fontSize:11,color:T.textMuted }}>Sin clasificaciones</div>
+                        : <>
+                            <ResponsiveContainer width="100%" height={Math.max(cfg[1].length*32+20,130)}>
+                              <BarChart data={cfg[1]} layout="vertical" margin={{top:0,right:12,left:0,bottom:0}}>
+                                <XAxis type="number" tick={{fontSize:9,fill:T.textMuted}} axisLine={false} tickLine={false} allowDecimals={false}/>
+                                <YAxis type="category" dataKey="tipo" tick={{fontSize:9,fill:T.textSec}} width={148} axisLine={false} tickLine={false}/>
+                                <Tooltip contentStyle={{ background:T.bgPanel,border:"1px solid "+T.borderLight,
+                                  borderRadius:T.r8,fontSize:11,color:T.textPrimary }} cursor={{fill:"rgba(255,255,255,0.05)"}}/>
+                                <Bar dataKey="n" name="Guías" fill={cfg[2]} radius={[0,4,4,0]} animationDuration={600}/>
+                              </BarChart>
+                            </ResponsiveContainer>
+                            <table style={{ width:"100%",borderCollapse:"collapse",fontSize:11,marginTop:12 }}>
+                              <thead>
+                                <tr style={{ borderBottom:"1px solid "+T.borderFaint }}>
+                                  <th style={{ textAlign:"left",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>Tipo</th>
+                                  <th style={{ textAlign:"right",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>Guías</th>
+                                  <th style={{ textAlign:"right",padding:"6px 4px",color:T.textMuted,fontWeight:500,fontSize:10 }}>%</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cfg[1].map(function(e,i){
+                                  var totT = cfg[1].reduce(function(s,x){return s+x.n;},0);
+                                  var pct = totT>0?Math.round(e.n/totT*100):0;
+                                  return (
+                                    <tr key={i} className="vge-row" style={{ borderBottom:"1px solid "+T.borderFaint+"66" }}>
+                                      <td style={{ padding:"6px 4px",color:T.textSec,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }} title={e.tipo}>{e.tipo}</td>
+                                      <td style={{ padding:"6px 4px",textAlign:"right",color:T.textPrimary,fontWeight:700,fontVariantNumeric:"tabular-nums" }}>{e.n.toLocaleString()}</td>
+                                      <td style={{ padding:"6px 4px",textAlign:"right",color:cfg[2],fontWeight:600,fontVariantNumeric:"tabular-nums" }}>{pct}%</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </>}
+                    </div>
                   </div>
                 );
               })}
