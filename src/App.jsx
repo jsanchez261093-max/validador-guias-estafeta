@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import Papa from "papaparse";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -780,7 +780,8 @@ export default function App() {
   var eUSt   = useState(new Set()); var estUsers=eUSt[0],setEstUsers=eUSt[1];
   var authsSt= useState([]); var auths=authsSt[0],setAuths=authsSt[1];
   var histSt = useState([]); var hist=histSt[0],setHist=histSt[1];
-  var fltSt  = useState({s:"todos",src:"todos",q:""}); var flt=fltSt[0],setFlt=fltSt[1];
+  var fltSt  = useState({s:"todos",src:"todos",q:"",f:"todos"}); var flt=fltSt[0],setFlt=fltSt[1];
+  var expSt  = useState(null); var expRow=expSt[0],setExpRow=expSt[1];
   var modalSt= useState(null); var modal=modalSt[0],setModal=modalSt[1];
   var mmodSt  = useState(null); var mmod=mmodSt[0],setMmod=mmodSt[1];
   var rFormSt = useState({name:"",reason:""}); var rForm=rFormSt[0],setRForm=rFormSt[1];
@@ -1204,9 +1205,11 @@ export default function App() {
   var stA=results.filter(function(r){return r.status==="anomalia";}).length;
   var stAu=results.filter(function(r){return r.status==="autorizada";}).length;
   var stR=results.filter(function(r){return r.status==="rechazada";}).length;
+  var fechasDisp = Array.from(new Set(results.map(function(r){return fechaToKey(r.fecha,"dia");}).filter(Boolean))).sort();
   var fltd = results.filter(function(r) {
     var q=flt.q.toLowerCase();
     return (flt.s==="todos"||r.status===flt.s)&&(flt.src==="todos"||r.source===flt.src)
+      &&(flt.f==="todos"||fechaToKey(r.fecha,"dia")===flt.f)
       &&(!flt.q||(r.guia&&r.guia.includes(flt.q))||(r.usuario&&r.usuario.toLowerCase().includes(q))||(r.razonSocial&&r.razonSocial.toLowerCase().includes(q)));
   });
   var pieData=[{n:"Válidas",v:stV,f:"#22c55e"},{n:"Sospechosas",v:stS,f:"#f59e0b"},{n:"Anomalías",v:stA,f:"#ef4444"},{n:"Autorizadas",v:stAu,f:"#8b5cf6"},{n:"Rechazadas",v:stR,f:"#dc2626"}].filter(function(d){return d.v>0;});
@@ -1579,8 +1582,8 @@ export default function App() {
                 icon={<><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></>}/>
             </div>
 
-            {/* ── Row 1: Pie + Bar fuente + Tipo Origen (con tablas) ── */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1.4fr", gap:14, marginBottom:14 }}>
+            {/* ── Row 1: Pie + Bar fuente (con tablas) ── */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
 
               {/* Donut estatus + tabla */}
               <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
@@ -1680,6 +1683,10 @@ export default function App() {
                   </table>
                 </div>
               </div>
+            </div>
+
+            {/* ── Row 2: Tipo Origen + Tipo Destino (mismo nivel) ── */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
 
               {/* Tipo de Origen + tabla */}
               <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
@@ -1729,11 +1736,10 @@ export default function App() {
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* ── Tipo de Destino (Comando) + tabla ── */}
-            <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
-              border:"1px solid "+T.borderFaint, overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.12)", marginBottom:14 }}>
+              {/* Tipo de Destino (Comando) + tabla */}
+              <div className="vge-card" style={{ background:T.bgSurface,borderRadius:T.r12,
+                border:"1px solid "+T.borderFaint, overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,0.12)" }}>
               <div style={{ height:3, background:"linear-gradient(90deg,#2dd4bf,#14b8a6)" }}/>
               <div style={{ padding:18 }}>
                 <div style={{ fontWeight:600,fontSize:12,color:T.textPrimary,marginBottom:2,
@@ -1779,6 +1785,7 @@ export default function App() {
                   </table>
                 )}
               </div>
+            </div>
             </div>
 
             {/* ── Tendencia temporal con toggle ── */}
@@ -2055,6 +2062,14 @@ export default function App() {
                 <option value="Comando">Comando</option>
                 <option value="Web Service">Web Service</option>
               </select>
+              {/* Filtro fecha */}
+              <select value={flt.f} style={selSt} onChange={function(e){setFlt(function(p){return Object.assign({},p,{f:e.target.value});});}}>
+                <option value="todos">Todas las fechas</option>
+                {fechasDisp.map(function(fk){
+                  var d=fk.split("-"); var lbl=d[2]+"/"+d[1]+"/"+d[0];
+                  return <option key={fk} value={fk}>{lbl}</option>;
+                })}
+              </select>
               {/* Búsqueda */}
               <div style={{ position:"relative",flex:1,minWidth:200 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={T.textMuted} strokeWidth="2"
@@ -2093,10 +2108,12 @@ export default function App() {
                       {fltd.slice(0,300).map(function(r,i){
                         var srcColor=r.source==="Comando"?T.accentBlueLt:T.purple;
                         var srcBg=r.source==="Comando"?T.accentGlow:T.purpleBg;
+                        var open=expRow===r.id;
                         return (
-                          <tr key={r.id} className="vge-row"
+                          <Fragment key={r.id}>
+                          <tr className="vge-row"
                             style={{ borderBottom:"1px solid "+T.borderFaint+"66",
-                              background:i%2===0?T.bgSurface:T.bgPanel }}>
+                              background:open?T.accentGlow:(i%2===0?T.bgSurface:T.bgPanel) }}>
                             <td style={{ padding:"10px 12px",fontFamily:"'SF Mono',monospace",fontSize:11,
                               fontWeight:600,color:T.textPrimary,whiteSpace:"nowrap" }}>{r.guia}</td>
                             <td style={{ padding:"10px 12px",fontSize:11,color:T.textSec,
@@ -2132,7 +2149,13 @@ export default function App() {
                                   </ul>
                                 : <span style={{ color:T.success,fontSize:10 }}>✓ Sin problemas</span>}
                             </td>
-                            <td style={{ padding:"10px 12px",display:"flex",gap:6 }}>
+                            <td style={{ padding:"10px 12px",display:"flex",gap:6,whiteSpace:"nowrap" }}>
+                              <button onClick={function(){setExpRow(open?null:r.id);}}
+                                style={{ padding:"4px 10px",background:open?T.accentBlue:"transparent",
+                                  color:open?"white":T.textSec,border:"1px solid "+(open?T.accentBlue:T.borderLight),
+                                  borderRadius:T.r6,fontSize:10,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap" }}>
+                                {open?"▾ Detalle":"▸ Detalle"}
+                              </button>
                               {(r.status==="sospechosa"||r.status==="anomalia") && (
                                 <>
                                   <button onClick={function(){setModal(r);setMForm({name:"",reason:""});setEstOpts({});}}
@@ -2151,6 +2174,31 @@ export default function App() {
                               )}
                             </td>
                           </tr>
+                          {open && (
+                            <tr key={r.id+"-det"} style={{ background:T.bgPanel }}>
+                              <td colSpan={11} style={{ padding:"2px 12px 16px" }}>
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:12,
+                                  background:T.bgSurface, border:"1px solid "+T.borderFaint, borderRadius:T.r8, padding:14 }}>
+                                  {[["Fecha gen./recol.", r.fecha],
+                                    ["Centro de costo", gv(r.row,"Centro de costo")],
+                                    ["Razón Social Origen", gv(r.row,"Razón Social Origen")],
+                                    ["Alias Dirección Origen", gv(r.row,"Alias Dirección Origen")],
+                                    ["Razón Social Destino", gv(r.row,"Razón Social Destino")],
+                                    ["Alias Dirección Destino", gv(r.row,"Alias Dirección Destino")],
+                                    ["Contenido", gv(r.row,"Contenido")],
+                                    ["Usuario", gv(r.row,"Usuario que le generó")]].map(function(pair,j){
+                                    return (
+                                      <div key={j} style={{ minWidth:0 }}>
+                                        <div style={{ fontSize:9,color:T.textMuted,textTransform:"uppercase",letterSpacing:"0.04em",marginBottom:3 }}>{pair[0]}</div>
+                                        <div style={{ fontSize:12,color:T.textPrimary,fontWeight:500,wordBreak:"break-word" }}>{pair[1]||"—"}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
                         );
                       })}
                     </tbody>
