@@ -860,71 +860,61 @@ export default function App() {
     loadLS("histId", function(v){setHistId(v);});
     loadLS("estId",  function(v){setEstId(v);});
 
-    // Cargar desde Google Sheets al iniciar
-    var eid = (function(){ var r=LS.get("estId"); return r&&r.value?JSON.parse(r.value):DEF_EST_ID; })();
+    var eid = (function(){ var r=LS.get("estId");  return r&&r.value?JSON.parse(r.value):DEF_EST_ID;  })();
+    var hid = (function(){ var r=LS.get("histId"); return r&&r.value?JSON.parse(r.value):DEF_HIST_ID; })();
 
-    // Autorizaciones desde Sheet
-    fetchAuths(eid).then(function(rows) {
-      // Convertir filas del sheet al formato interno
-      var parsed = rows.map(function(r) {
-        return {
-          guia:       r["Guía"]||r["guia"]||"",
-          source:     r["Fuente"]||r["source"]||"",
-          original:   r["Original"]||r["original"]||"",
-          criticidad: r["Criticidad"]||r["criticidad"]||"",
-          issues:     (r["Problemas"]||r["issues"]||"").split(";").map(function(s){return s.trim();}).filter(Boolean),
-          name:       r["Autorizado por"]||r["name"]||"",
-          reason:     r["Motivo"]||r["reason"]||"",
-          fecha:      r["Fecha"]||r["fecha"]||""
-        };
-      });
-      setAuths(parsed);
-    }).catch(function(){});
+    (async function bootstrap(){
+      try {
+        // Autorizaciones desde Sheet
+        var aRows = await fetchAuths(eid).catch(function(){return [];});
+        var aParsed = (aRows||[]).map(function(r){ return {
+          guia:r["Guía"]||r["guia"]||"", source:r["Fuente"]||r["source"]||"",
+          original:r["Original"]||r["original"]||"", criticidad:r["Criticidad"]||r["criticidad"]||"",
+          issues:(r["Problemas"]||r["issues"]||"").split(";").map(function(s){return s.trim();}).filter(Boolean),
+          name:r["Autorizado por"]||r["name"]||"", reason:r["Motivo"]||r["reason"]||"", fecha:r["Fecha"]||r["fecha"]||""
+        }; });
+        setAuths(aParsed);
 
-    // Rechazadas desde Sheet
-    fetchRejections(eid).then(function(rows) {
-      var parsed = rows.map(function(r) {
-        return {
-          guia:       r["Guía"]||r["guia"]||"",
-          source:     r["Fuente"]||r["source"]||"",
-          original:   r["Original"]||r["original"]||"",
-          criticidad: r["Criticidad"]||r["criticidad"]||"",
-          problemas:  r["Problemas"]||r["problemas"]||"",
-          rejectedBy: r["Rechazada por"]||r["rejectedBy"]||"",
-          motivo:     r["Motivo"]||r["motivo"]||"",
-          fecha:      r["Fecha"]||r["fecha"]||""
-        };
-      });
-      setRejects(parsed);
-    }).catch(function(){});
+        // Rechazadas desde Sheet
+        var rRows = await fetchRejections(eid).catch(function(){return [];});
+        var rParsed = (rRows||[]).map(function(r){ return {
+          guia:r["Guía"]||r["guia"]||"", source:r["Fuente"]||r["source"]||"",
+          original:r["Original"]||r["original"]||"", criticidad:r["Criticidad"]||r["criticidad"]||"",
+          problemas:r["Problemas"]||r["problemas"]||"", rejectedBy:r["Rechazada por"]||r["rejectedBy"]||"",
+          motivo:r["Motivo"]||r["motivo"]||"", fecha:r["Fecha"]||r["fecha"]||""
+        }; });
+        setRejects(rParsed);
 
-    // Reglas desde Sheet
-    fetchRulesFromSheet(eid).then(function(d) {
-      if (d.origenRules  && d.origenRules.length  > 0) setOrRules(d.origenRules);
-      if (d.destinoRules && d.destinoRules.length > 0) setDtRules(d.destinoRules);
-    }).catch(function(){});
+        // Reglas desde Sheet
+        var rules = await fetchRulesFromSheet(eid).catch(function(){return {};});
+        var orR = (rules.origenRules  && rules.origenRules.length)  ? rules.origenRules  : orRules;
+        var dtR = (rules.destinoRules && rules.destinoRules.length) ? rules.destinoRules : dtRules;
+        if (rules.origenRules  && rules.origenRules.length)  setOrRules(rules.origenRules);
+        if (rules.destinoRules && rules.destinoRules.length) setDtRules(rules.destinoRules);
 
-    // Patrones WS desde Sheet
-    fetchWsConfFromSheet(eid).then(function(d) {
-      if (d && (d.trKeywords||d.camKeywords||d.ecPrefixes||d.concentradoraAccounts)) {
-        setWsConf({
-          trKeywords:            d.trKeywords            || DEFAULT_WS_CONFIG.trKeywords,
-          camKeywords:           d.camKeywords           || DEFAULT_WS_CONFIG.camKeywords,
-          ecPrefixes:            d.ecPrefixes            || DEFAULT_WS_CONFIG.ecPrefixes,
-          concentradoraAccounts: d.concentradoraAccounts || DEFAULT_WS_CONFIG.concentradoraAccounts
-        });
-      }
-    }).catch(function(){});
+        // Patrones WS desde Sheet
+        var wsc = await fetchWsConfFromSheet(eid).catch(function(){return null;});
+        var wsConfLocal = wsConf;
+        if (wsc && (wsc.trKeywords||wsc.camKeywords||wsc.ecPrefixes||wsc.concentradoraAccounts)) {
+          wsConfLocal = {
+            trKeywords:            wsc.trKeywords            || DEFAULT_WS_CONFIG.trKeywords,
+            camKeywords:           wsc.camKeywords           || DEFAULT_WS_CONFIG.camKeywords,
+            ecPrefixes:            wsc.ecPrefixes            || DEFAULT_WS_CONFIG.ecPrefixes,
+            concentradoraAccounts: wsc.concentradoraAccounts || DEFAULT_WS_CONFIG.concentradoraAccounts
+          };
+          setWsConf(wsConfLocal);
+        }
 
-    // Catálogos: nombres autorizadores y motivos históricos
-    fetchCatalogos(eid).then(function(d) {
-      if (d) setCatalogos({ nombres: d.nombres||[], motivos: d.motivos||[] });
-    }).catch(function(){});
+        // Catálogos y motivos (no críticos, en paralelo)
+        fetchCatalogos(eid).then(function(d){ if(d) setCatalogos({ nombres:d.nombres||[], motivos:d.motivos||[] }); }).catch(function(){});
+        fetchRejectMotivosAPI(eid).then(function(mots){ setMotivosRech(mots||[]); }).catch(function(){});
 
-    // Motivos de rechazo (col Motivo de "Historial de Rechazadas")
-    fetchRejectMotivosAPI(eid).then(function(mots) {
-      setMotivosRech(mots || []);
-    }).catch(function(){});
+        // ── Validación automática de TODA LA BASE al abrir la app ──
+        var today = new Date().toISOString().split("T")[0];
+        runValidation({ full:true, ini:"2020-01-01", fin:today,
+          orRules:orR, dtRules:dtR, auths:aParsed, rejects:rParsed, wsConf:wsConfLocal, estId:eid, histId:hid });
+      } catch(e) { console.error("bootstrap", e); }
+    })();
   }, []);
 
   function notify(msg, ok) {
@@ -1024,23 +1014,26 @@ export default function App() {
     return dates;
   }
 
-  async function runValidation() {
-    if (!date) return;
+  async function runValidation(opts) {
+    opts = (opts && opts.ini) ? opts : {};
+    var rOr=opts.orRules||orRules, rDt=opts.dtRules||dtRules, rAuth=opts.auths||auths, rRej=opts.rejects||rejects, rWs=opts.wsConf||wsConf, eId=opts.estId||estId, hId=opts.histId||histId;
+    var fullMode=!!opts.full;
+    if (!opts.ini && !date) return;
     setLoading(true);
     try {
-      var rango    = getRangoFromMode();
+      var rango    = (opts.ini && opts.fin) ? {ini:opts.ini,fin:opts.fin} : getRangoFromMode();
       var rangoIni = rango.ini, rangoFin = rango.fin;
       var dates    = getDatesInRange(rangoIni, rangoFin);
       var esGrande = dates.length > 7; // más de 7 días → llamada única al rango
 
       // Columnas de reglas activas
       var extraCols = [];
-      orRules.concat(dtRules).forEach(function(r){ if(r.active && r.field) extraCols.push(r.field); });
+      rOr.concat(rDt).forEach(function(r){ if(r.active && r.field) extraCols.push(r.field); });
       extraCols = extraCols.filter(function(v,i,a){ return a.indexOf(v)===i; });
 
       // Cargar estandarizado una sola vez
       setLoadMsg(" Cargando estandarizado…");
-      var estData = await fetchEst(estId);
+      var estData = await fetchEst(eId);
       var nO = new Set(estData.origenes.map(function(v){return String(v).toLowerCase();}));
       var nD = new Set(estData.destinos.map(function(v){return String(v).toLowerCase();}));
       var nC = new Set(estData.contenidos.map(function(v){return String(v).toLowerCase();}));
@@ -1055,14 +1048,14 @@ export default function App() {
       if (esGrande) {
         // Modo eficiente: una sola llamada para mes/año
         setLoadMsg(" Leyendo rango completo (" + dates.length + " días) desde Sheets…");
-        var rangoData = await fetchGuiasRango(histId, rangoIni, rangoFin, extraCols);
+        var rangoData = await fetchGuiasRango(hId, rangoIni, rangoFin, extraCols);
         cd = rangoData.comando    || [];
         wd = rangoData.webService || [];
       } else {
         // Modo paralelo: una llamada por día (hasta 7 días)
         setLoadMsg(" Leyendo " + dates.length + " día(s) desde Google Sheets…");
         var dayResults = await Promise.all(dates.map(function(d) {
-          return fetchGuias(histId, d, extraCols).catch(function(e) {
+          return fetchGuias(hId, d, extraCols).catch(function(e) {
             return { comando: [], webService: [], error: e.message };
           });
         }));
@@ -1075,12 +1068,12 @@ export default function App() {
       setLoadMsg("⚙️ Validando " + (cd.length + wd.length) + " guías…");
       var cGuias   = cd.map(function(r){return gv(r,"No. de guía");});
       var cGuiaSet = new Set(cGuias);
-      var authSet   = new Set(auths.map(function(a){return a.source+"|"+a.guia;}));
+      var authSet   = new Set(rAuth.map(function(a){return a.source+"|"+a.guia;}));
       // Rechazos: matchear por GUÍA (único global). NO filtrar por fecha aquí —
       // results ya viene filtrado por período, igual que con auths.
-      var rejectGuiaSet = new Set(rejects.map(function(a){return String(a.guia).trim();}));
-      var cmdRes   = cd.map(function(r){return validateCmd(r,cGuias,nO,nD,nU,nC,orRules,dtRules);});
-      var wsRaw    = wd.map(function(r){return validateWS(r,cGuiaSet,wsConf);});
+      var rejectGuiaSet = new Set(rRej.map(function(a){return String(a.guia).trim();}));
+      var cmdRes   = cd.map(function(r){return validateCmd(r,cGuias,nO,nD,nU,nC,rOr,rDt);});
+      var wsRaw    = wd.map(function(r){return validateWS(r,cGuiaSet,rWs);});
       var disc     = wsRaw.filter(function(r){return r===null;}).length;
       var wsRes    = wsRaw.filter(function(r){return r!==null;});
       var all = cmdRes.concat(wsRes).map(function(r){
@@ -1090,16 +1083,17 @@ export default function App() {
       });
       setResults(all);
 
-      // Ajustar dashPeriod automáticamente según lo consultado
-      if (queryMode === "anio")        setDashPeriod("mes");
+      // Ajustar dashPeriod automáticamente según lo cargado
+      if (fullMode)                    setDashPeriod("mes");
+      else if (queryMode === "anio")   setDashPeriod("mes");
       else if (queryMode === "mes")    setDashPeriod("semana");
-      else if (dates.length > 1)       setDashPeriod("dia");
       else                             setDashPeriod("dia");
       // Resetear filtro de rango del Dashboard al cargar datos nuevos
       setDashFilt({mode:"todos",val:"",from:"",to:""});
 
       var modeLabels = { dia:"Día", rango:"Rango", mes:"Mes", anio:"Año" };
-      var periodoLabel = queryMode === "dia"
+      var periodoLabel = fullMode ? "Toda la base"
+        : queryMode === "dia"
         ? fmtDate(rangoIni)
         : queryMode === "mes"
           ? new Date(rangoIni + "T12:00:00").toLocaleDateString("es-MX",{month:"long",year:"numeric"})
@@ -1109,18 +1103,19 @@ export default function App() {
 
       var b = {
         id:Date.now(), fecha:new Date().toLocaleString("es-MX"), periodo:periodoLabel,
-        modo: modeLabels[queryMode] || queryMode,
+        modo: fullMode ? "Completo" : (modeLabels[queryMode] || queryMode),
         total:all.length, discarded:disc,
         validas:all.filter(function(r){return r.status==="valida";}).length,
         sospechosas:all.filter(function(r){return r.status==="sospechosa";}).length,
         anomalias:all.filter(function(r){return r.status==="anomalia";}).length,
         cmd:cd.length, ws:wsRes.length
       };
-      var nh = [b].concat(hist).slice(0,30);
+      var existingHist = (function(){ try{var lr=LS.get("hist"); return lr&&lr.value?JSON.parse(lr.value):hist;}catch(e){return hist;} })();
+      var nh = [b].concat(existingHist).slice(0,30);
       setHist(nh);
       LS.set("hist", JSON.stringify(nh));
       setTab("dashboard");
-      notify(all.length+" guías · " + dates.length + " día(s) · Cmd:"+cd.length+" WS:"+wsRes.length+(disc>0?" · "+disc+" desc.":""));
+      notify(all.length+" guías" + (fullMode?"":" · " + dates.length + " día(s)") + " · Cmd:"+cd.length+" WS:"+wsRes.length+(disc>0?" · "+disc+" desc.":""));
     } catch(e) {
       notify("Error: "+(e.message||"Verifica la conexión con Apps Script"), false);
       console.error(e);
@@ -1439,132 +1434,52 @@ export default function App() {
                 Validación de Guías
               </h2>
               <div style={{ fontSize:13, color:T.textSec, lineHeight:1.6 }}>
-                Selecciona el período para cargar y validar<br/>guías directamente desde Google Sheets
+                La base completa se valida automáticamente al abrir.<br/>Usa los filtros del Dashboard y Resultados para acotar por fecha.
               </div>
             </div>
 
-            {/* Selector de período */}
+            {/* Estado de carga / bienvenida */}
             <div style={{ background:T.bgSurface, borderRadius:T.r16, border:"1px solid "+T.borderFaint,
-              padding:24, marginBottom:16 }}>
-              <div style={{ fontSize:11,fontWeight:600,color:T.textMuted,textTransform:"uppercase",
-                letterSpacing:"0.07em",marginBottom:16 }}>Período de consulta</div>
-
-              {/* Modo selector */}
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6, marginBottom:16 }}>
-                {[["dia","Día","M"],["rango","Rango","↔"],["mes","Mes",""],["anio","Año",""]].map(function(m){
-                  var active = queryMode===m[0];
-                  return (
-                    <button key={m[0]} onClick={function(){ setQueryMode(m[0]); }}
-                      style={{ padding:"10px 4px", borderRadius:T.r8, border:"1px solid",
-                        borderColor: active ? T.accentBlue : T.borderFaint,
-                        background:  active ? T.accentGlow : T.bgPanel,
-                        color:       active ? T.accentBlueLt : T.textMuted,
-                        fontSize:12, fontWeight: active ? 700 : 400,
-                        cursor:"pointer", transition:"all 0.15s" }}>
-                      {m[1]}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Controles de fecha */}
-              {queryMode === "dia" && (
-                <input type="date" value={date}
-                  max={new Date().toISOString().split("T")[0]}
-                  onChange={function(e){ setDate(e.target.value); setDateEnd(e.target.value); }}
-                  style={Object.assign({},selSt,{width:"100%",fontSize:14,padding:"11px 14px"})} />
-              )}
-              {queryMode === "rango" && (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                  <div>
-                    <div style={{ fontSize:10,color:T.textMuted,marginBottom:5,fontWeight:600,
-                      textTransform:"uppercase",letterSpacing:"0.06em" }}>Desde</div>
-                    <input type="date" value={date} max={new Date().toISOString().split("T")[0]}
-                      onChange={function(e){ setDate(e.target.value); if(dateEnd<e.target.value) setDateEnd(e.target.value); }}
-                      style={Object.assign({},selSt,{width:"100%",fontSize:13,padding:"10px 12px"})} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize:10,color:T.textMuted,marginBottom:5,fontWeight:600,
-                      textTransform:"uppercase",letterSpacing:"0.06em" }}>Hasta</div>
-                    <input type="date" value={dateEnd} min={date} max={new Date().toISOString().split("T")[0]}
-                      onChange={function(e){ setDateEnd(e.target.value); }}
-                      style={Object.assign({},selSt,{width:"100%",fontSize:13,padding:"10px 12px"})} />
-                  </div>
+              padding:28, marginBottom:16, textAlign:"center", minHeight:120,
+              display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:14 }}>
+              {loading ? (
+                <>
+                  <div className="vge-pulse" style={{ width:12,height:12,background:T.accentBlue,borderRadius:"50%" }}/>
+                  <div style={{ fontSize:13,color:T.textSec,fontWeight:500 }}>{loadMsg || "Cargando toda la base…"}</div>
+                </>
+              ) : results.length>0 ? (
+                <>
+                  <div style={{ fontSize:32,fontWeight:700,color:T.textPrimary,letterSpacing:"-0.02em",lineHeight:1 }}>{results.length.toLocaleString()}</div>
+                  <div style={{ fontSize:12,color:T.textMuted }}>guías cargadas y validadas</div>
+                  <button onClick={function(){ setTab("dashboard"); }}
+                    style={{ padding:"11px 24px", background:"linear-gradient(135deg,"+T.accentBlue+","+T.accentBlueDk+")",
+                      color:"white", border:"none", borderRadius:T.r10, fontSize:13, fontWeight:700, cursor:"pointer",
+                      boxShadow:"0 4px 20px rgba(59,130,246,0.35)" }}>
+                    Ir al Dashboard →
+                  </button>
+                </>
+              ) : (
+                <div style={{ fontSize:13,color:T.textSec,lineHeight:1.6 }}>
+                  La base se cargará automáticamente.<br/>Si no aparece, usa el botón de abajo.
                 </div>
               )}
-              {queryMode === "mes" && (
-                <input type="month" value={date.slice(0,7)} max={new Date().toISOString().slice(0,7)}
-                  onChange={function(e){ var v=e.target.value+"-01"; setDate(v); setDateEnd(v); }}
-                  style={Object.assign({},selSt,{width:"100%",fontSize:14,padding:"11px 14px"})} />
-              )}
-              {queryMode === "anio" && (
-                <select value={date.slice(0,4)}
-                  onChange={function(e){ var v=e.target.value+"-01-01"; setDate(v); setDateEnd(v); }}
-                  style={Object.assign({},selSt,{width:"100%",fontSize:14,padding:"11px 14px"})}>
-                  {Array.from({length:5},function(_,i){ var y=new Date().getFullYear()-i; return (
-                    <option key={y} value={y}>{y}</option>
-                  );})}
-                </select>
-              )}
-
-              {/* Resumen período */}
-              {date && (function(){
-                var r=getRangoFromMode(), dias=getDatesInRange(r.ini,r.fin).length;
-                if(dias>1) return (
-                  <div style={{ marginTop:10, padding:"8px 12px", background:T.accentGlow,
-                    borderRadius:T.r8, border:"1px solid "+T.borderBlue,
-                    display:"flex", alignItems:"center", gap:8 }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={T.accentBlueLt} strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                    <span style={{ fontSize:11, color:T.accentBlueLt, fontWeight:500 }}>
-                      {dias} días · {fmtDate(r.ini)} → {fmtDate(r.fin)}
-                    </span>
-                  </div>
-                );
-                return null;
-              })()}
             </div>
 
-            {/* CTA principal */}
-            <button onClick={runValidation} disabled={loading||!date} className="vge-btn-primary"
-              style={{ width:"100%", padding:"15px", color:"white", border:"none", borderRadius:T.r12,
+            {/* Recargar toda la base */}
+            <button onClick={function(){
+                var today=new Date().toISOString().split("T")[0];
+                runValidation({ full:true, ini:"2020-01-01", fin:today });
+              }} disabled={loading} className="vge-btn-primary"
+              style={{ width:"100%", padding:"14px", color:"white", border:"none", borderRadius:T.r12,
                 fontSize:14, fontWeight:700, letterSpacing:"0.01em",
-                background:loading||!date?"rgba(59,130,246,0.3)":
-                  "linear-gradient(135deg,"+T.accentBlue+","+T.accentBlueDk+")",
-                cursor:loading||!date?"not-allowed":"pointer",
-                boxShadow:loading||!date?"none":"0 4px 20px rgba(59,130,246,0.35)",
-                marginBottom:10, display:"flex", alignItems:"center", justifyContent:"center", gap:10
-              }}>
+                background:loading?"rgba(59,130,246,0.3)":"linear-gradient(135deg,"+T.accentBlue+","+T.accentBlueDk+")",
+                cursor:loading?"not-allowed":"pointer",
+                boxShadow:loading?"none":"0 4px 20px rgba(59,130,246,0.35)",
+                marginBottom:20, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
               {loading ? (
                 <><div className="vge-pulse" style={{ width:8,height:8,background:"white",borderRadius:"50%" }}/>
                   {loadMsg || "Cargando…"}</>
-              ) : (function(){
-                if(!date) return <span>Selecciona un período</span>;
-                var r=getRangoFromMode(), dias=getDatesInRange(r.ini,r.fin).length;
-                if(queryMode==="dia") return <span>Validar guías del {fmtDate(r.ini)}</span>;
-                if(queryMode==="mes") return <span>Validar mes de {new Date(r.ini+"T12:00:00").toLocaleDateString("es-MX",{month:"long",year:"numeric"})}</span>;
-                if(queryMode==="anio") return <span>Validar año {r.ini.slice(0,4)} · {dias} días</span>;
-                return <span>Validar {dias} días ({fmtDate(r.ini)} – {fmtDate(r.fin)})</span>;
-              })()}
-            </button>
-
-            {/* Limpiar caché */}
-            <button onClick={async function(){
-                if(!date){notify("Selecciona un período primero",false);return;}
-                var r=getRangoFromMode(), dates=getDatesInRange(r.ini,r.fin);
-                setLoading(true); setLoadMsg("Limpiando caché…");
-                try {
-                  await Promise.all(dates.map(function(d){return clearCache(d).catch(function(){});}));
-                  notify("Caché limpiado para "+dates.length+" día(s)");
-                } catch(e){notify("Error: "+e.message,false);}
-                setLoadMsg(""); setLoading(false);
-              }} disabled={loading||!date}
-              style={{ width:"100%", padding:"10px", border:"1px solid "+T.borderFaint,
-                borderRadius:T.r10, fontSize:12, cursor:loading||!date?"not-allowed":"pointer",
-                background:"transparent", color:T.textMuted, marginBottom:20,
-                transition:"all 0.15s" }}>
-              ↺ Limpiar caché del período seleccionado
+              ) : <span>↻ Recargar toda la base</span>}
             </button>
 
             {/* Fuentes */}
